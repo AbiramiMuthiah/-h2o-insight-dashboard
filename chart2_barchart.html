@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chart 2 – Top/Bottom Countries</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f7ff;
+      color: #1a2e3b;
+      padding: 24px;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a4a7a;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #5a7a99;
+      margin-bottom: 16px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+
+    .controls label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a4a7a;
+      margin-right: 4px;
+    }
+
+    select {
+      padding: 6px 10px;
+      border: 1.5px solid #a0c4e8;
+      border-radius: 6px;
+      background: white;
+      font-size: 13px;
+      color: #1a2e3b;
+      cursor: pointer;
+      outline: none;
+    }
+
+    select:focus { border-color: #1a4a7a; }
+
+    .btn-group { display: flex; gap: 6px; }
+
+    button {
+      padding: 6px 14px;
+      border: 1.5px solid #a0c4e8;
+      border-radius: 6px;
+      background: white;
+      font-size: 13px;
+      color: #1a4a7a;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    button.active, button:hover {
+      background: #1a4a7a;
+      color: white;
+      border-color: #1a4a7a;
+    }
+
+    #chart-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(26,74,122,0.10);
+      padding: 20px;
+      position: relative;
+    }
+
+    .bar {
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .bar:hover { opacity: 0.75; }
+
+    .bar-label {
+      font-size: 11px;
+      fill: #1a2e3b;
+    }
+
+    .value-label {
+      font-size: 11px;
+      fill: #1a4a7a;
+      font-weight: 600;
+    }
+
+    .tooltip {
+      position: absolute;
+      background: #1a2e3b;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      line-height: 1.6;
+      z-index: 10;
+    }
+
+    .tooltip strong { color: #7ec8e3; }
+
+    .axis text { font-size: 11px; fill: #5a7a99; }
+    .axis path, .axis line { stroke: #d0e4f5; }
+    .grid line { stroke: #e8f4fd; stroke-dasharray: 3,3; }
+    .grid path { stroke: none; }
+
+    .year-display {
+      font-size: 48px;
+      font-weight: 800;
+      fill: #e8f4fd;
+      text-anchor: end;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Top / Bottom Countries by Water Access</h2>
+<p class="subtitle">Population using safely managed drinking-water services (%) — National level</p>
+
+<div class="controls">
+  <div>
+    <label>Year:</label>
+    <select id="yearFilter"></select>
+  </div>
+  <div>
+    <label>Region:</label>
+    <select id="regionFilter">
+      <option value="All">All Regions</option>
+    </select>
+  </div>
+  <div>
+    <label>Show:</label>
+    <div class="btn-group">
+      <button id="btnTop" class="active">Top 10</button>
+      <button id="btnBottom">Bottom 10</button>
+    </div>
+  </div>
+  <div>
+    <label>Area:</label>
+    <div class="btn-group">
+      <button id="btnNational" class="active">National</button>
+      <button id="btnUrban">Urban</button>
+      <button id="btnRural">Rural</button>
+    </div>
+  </div>
+</div>
+
+<div id="chart-container">
+  <div class="tooltip" id="tooltip"></div>
+  <svg id="chart"></svg>
+</div>
+
+<script>
+const margin = { top: 20, right: 80, bottom: 30, left: 160 };
+const width = 860 - margin.left - margin.right;
+const height = 420 - margin.top - margin.bottom;
+
+const svg = d3.select("#chart")
+  .attr("width", width + margin.left + margin.right)
+  .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+  .attr("transform", `translate(${margin.left},${margin.top})`);
+
+const xAxisG = svg.append("g").attr("class", "axis x-axis").attr("transform", `translate(0,${height})`);
+const yAxisG = svg.append("g").attr("class", "axis y-axis");
+const gridG = svg.append("g").attr("class", "grid");
+const barsG = svg.append("g").attr("class", "bars");
+
+// Watermark year
+const yearWatermark = svg.append("text")
+  .attr("class", "year-display")
+  .attr("x", width)
+  .attr("y", height - 10)
+  .text("");
+
+// Axis label
+svg.append("text")
+  .attr("x", width / 2).attr("y", height + 28)
+  .attr("text-anchor", "middle")
+  .attr("font-size", "12px").attr("fill", "#5a7a99")
+  .text("Population with Access (%)");
+
+const tooltip = document.getElementById("tooltip");
+const container = document.getElementById("chart-container");
+
+// Color scale by region
+const regionColors = {
+  "Africa": "#e07b39",
+  "Americas": "#2ca02c",
+  "Eastern Mediterranean": "#9467bd",
+  "Europe": "#1a6faf",
+  "South-East Asia": "#d62728",
+  "Western Pacific": "#17becf",
+  "Other": "#7f7f7f"
+};
+
+// State — need to load all JMP for urban/rural
+let allJMP = [];
+let activeMode = "top";
+let activeArea = "National";
+
+// Load both water datasets
+Promise.all([
+  d3.csv("chart2_data.csv"),  // National safely managed water
+  d3.csv("Basic and safely managed drinking water services.csv")
+]).then(([national, full]) => {
+  // Use full JMP water file for urban/rural
+  full.forEach(d => {
+    d.Year = +d.Year;
+    d.Numeric = +d.Numeric;
+  });
+  allJMP = full;
+
+  // Year filter from national data
+  const years = [...new Set(national.map(d => +d.Year))].sort((a,b)=>b-a);
+  d3.select("#yearFilter").selectAll("option")
+    .data(years).enter().append("option")
+    .text(d=>d).attr("value",d=>d);
+
+  // Default to latest year
+  d3.select("#yearFilter").node().value = d3.max(years);
+
+  // Region filter
+  const regions = ["All", ...new Set(full.map(d=>d['WHO region']).filter(Boolean).sort())];
+  d3.select("#regionFilter").selectAll("option")
+    .data(regions).enter().append("option")
+    .text(d=>d).attr("value",d=>d);
+
+  renderChart();
+
+  // Events
+  d3.select("#yearFilter").on("change", renderChart);
+  d3.select("#regionFilter").on("change", renderChart);
+
+  d3.select("#btnTop").on("click", () => {
+    activeMode = "top";
+    setActive("btnTop", ["btnTop","btnBottom"]);
+    renderChart();
+  });
+  d3.select("#btnBottom").on("click", () => {
+    activeMode = "bottom";
+    setActive("btnBottom", ["btnTop","btnBottom"]);
+    renderChart();
+  });
+  d3.select("#btnNational").on("click", () => {
+    activeArea = "National";
+    setActive("btnNational", ["btnNational","btnUrban","btnRural"]);
+    renderChart();
+  });
+  d3.select("#btnUrban").on("click", () => {
+    activeArea = "Urban";
+    setActive("btnUrban", ["btnNational","btnUrban","btnRural"]);
+    renderChart();
+  });
+  d3.select("#btnRural").on("click", () => {
+    activeArea = "Rural";
+    setActive("btnRural", ["btnNational","btnUrban","btnRural"]);
+    renderChart();
+  });
+});
+
+function renderChart() {
+  barsG.selectAll("*").remove();
+
+  const year = +d3.select("#yearFilter").node().value;
+  const region = d3.select("#regionFilter").node().value;
+
+  // Determine which indicator/area to use
+  let areaFilter = activeArea === "National" ? "Total" : activeArea;
+  let indicator = "Population using safely managed drinking-water services (%)";
+
+  let data = allJMP.filter(d =>
+    d.Year === year &&
+    d['Residence Area Type'] === areaFilter &&
+    d['Indicator'] === indicator &&
+    !isNaN(d.Numeric)
+  );
+
+  if (region !== "All") data = data.filter(d => d['WHO region'] === region);
+
+  // Sort and slice
+  data.sort((a, b) => b.Numeric - a.Numeric);
+  const slice = activeMode === "top" ? data.slice(0, 10) : data.slice(-10).reverse();
+
+  if (slice.length === 0) return;
+
+  // Scales
+  const xScale = d3.scaleLinear().domain([0, 100]).range([0, width]);
+  const yScale = d3.scaleBand()
+    .domain(slice.map(d => d.Country))
+    .range([0, height])
+    .padding(0.25);
+
+  // Grid
+  gridG.selectAll("*").remove();
+  gridG.call(d3.axisBottom(xScale).tickSize(height).tickFormat("").ticks(5))
+    .attr("transform","translate(0,0)");
+
+  // Axes
+  xAxisG.transition().duration(400).call(d3.axisBottom(xScale).ticks(5).tickFormat(d => d + "%"));
+  yAxisG.transition().duration(400).call(d3.axisLeft(yScale));
+
+  // Watermark
+  yearWatermark.text(year);
+
+  // Bars
+  const bars = barsG.selectAll(".bar").data(slice, d => d.Country);
+
+  bars.enter().append("rect")
+    .attr("class", "bar")
+    .attr("x", 0)
+    .attr("y", d => yScale(d.Country))
+    .attr("height", yScale.bandwidth())
+    .attr("width", 0)
+    .attr("rx", 4)
+    .attr("fill", d => regionColors[d['WHO region']] || regionColors["Other"])
+    .on("mousemove", function(event, d) {
+      const rect = container.getBoundingClientRect();
+      tooltip.style.opacity = "1";
+      tooltip.style.left = (event.clientX - rect.left + 12) + "px";
+      tooltip.style.top = (event.clientY - rect.top - 10) + "px";
+      tooltip.innerHTML = `<strong>${d.Country}</strong><br>Region: ${d['WHO region']}<br>Year: ${d.Year}<br>Access: ${(+d.Numeric).toFixed(1)}%`;
+    })
+    .on("mouseleave", () => tooltip.style.opacity = "0")
+    .transition().duration(500)
+    .attr("width", d => xScale(+d.Numeric));
+
+  // Value labels
+  barsG.selectAll(".value-label").data(slice).enter()
+    .append("text")
+    .attr("class", "value-label")
+    .attr("x", d => xScale(+d.Numeric) + 6)
+    .attr("y", d => yScale(d.Country) + yScale.bandwidth() / 2 + 4)
+    .text(d => (+d.Numeric).toFixed(1) + "%")
+    .attr("opacity", 0)
+    .transition().delay(400).duration(200)
+    .attr("opacity", 1);
+}
+
+function setActive(activeId, group) {
+  group.forEach(id => document.getElementById(id).classList.remove("active"));
+  document.getElementById(activeId).classList.add("active");
+}
+</script>
+</body>
+</html>

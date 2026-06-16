@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chart 1 – Water Access Trend</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f7ff;
+      color: #1a2e3b;
+      padding: 24px;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a4a7a;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #5a7a99;
+      margin-bottom: 16px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+
+    .controls label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a4a7a;
+      margin-right: 4px;
+    }
+
+    select {
+      padding: 6px 10px;
+      border: 1.5px solid #a0c4e8;
+      border-radius: 6px;
+      background: white;
+      font-size: 13px;
+      color: #1a2e3b;
+      cursor: pointer;
+      outline: none;
+    }
+
+    select:focus { border-color: #1a4a7a; }
+
+    .btn-group {
+      display: flex;
+      gap: 6px;
+    }
+
+    button {
+      padding: 6px 14px;
+      border: 1.5px solid #a0c4e8;
+      border-radius: 6px;
+      background: white;
+      font-size: 13px;
+      color: #1a4a7a;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    button.active, button:hover {
+      background: #1a4a7a;
+      color: white;
+      border-color: #1a4a7a;
+    }
+
+    #chart-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(26,74,122,0.10);
+      padding: 20px;
+      position: relative;
+    }
+
+    .line {
+      fill: none;
+      stroke-width: 2.2px;
+      transition: opacity 0.3s;
+    }
+
+    .line:hover { stroke-width: 3.5px; }
+
+    .dot {
+      cursor: pointer;
+      transition: r 0.15s;
+    }
+
+    .dot:hover { r: 6; }
+
+    /* Tooltip */
+    .tooltip {
+      position: absolute;
+      background: #1a2e3b;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      line-height: 1.6;
+      z-index: 10;
+      max-width: 200px;
+    }
+
+    .tooltip strong { color: #7ec8e3; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 3px 8px;
+      border-radius: 20px;
+      border: 1.5px solid #e0eaf5;
+      transition: background 0.15s;
+    }
+
+    .legend-item:hover { background: #e8f4fd; }
+
+    .legend-color {
+      width: 14px;
+      height: 3px;
+      border-radius: 2px;
+    }
+
+    .axis text { font-size: 11px; fill: #5a7a99; }
+    .axis path, .axis line { stroke: #d0e4f5; }
+    .grid line { stroke: #e8f4fd; stroke-dasharray: 3,3; }
+    .grid path { stroke: none; }
+
+    #no-data {
+      display: none;
+      text-align: center;
+      padding: 40px;
+      color: #5a7a99;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Water Access Trend (2000–2017)</h2>
+<p class="subtitle">Population using safely managed drinking-water services (%) — National level</p>
+
+<div class="controls">
+  <div>
+    <label>Region:</label>
+    <select id="regionFilter">
+      <option value="All">All Regions</option>
+    </select>
+  </div>
+  <div>
+    <label>Country:</label>
+    <select id="countryFilter">
+      <option value="All">All Countries</option>
+    </select>
+  </div>
+  <div class="btn-group">
+    <button id="btnImproved" class="active">Most Improved</button>
+    <button id="btnTop5">Top 5</button>
+    <button id="btnBottom5">Bottom 5</button>
+    <button id="btnReset">Reset</button>
+  </div>
+</div>
+
+<div id="chart-container">
+  <div id="no-data">No data available for the selected filters.</div>
+  <div class="tooltip" id="tooltip"></div>
+  <svg id="chart"></svg>
+  <div class="legend" id="legend"></div>
+</div>
+
+<script>
+const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+const width = 860 - margin.left - margin.right;
+const height = 400 - margin.top - margin.bottom;
+
+const svg = d3.select("#chart")
+  .attr("width", width + margin.left + margin.right)
+  .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+  .attr("transform", `translate(${margin.left},${margin.top})`);
+
+// Axes groups
+const xAxisG = svg.append("g").attr("class", "axis x-axis").attr("transform", `translate(0,${height})`);
+const yAxisG = svg.append("g").attr("class", "axis y-axis");
+const gridG = svg.append("g").attr("class", "grid");
+const linesG = svg.append("g").attr("class", "lines");
+
+// Axis labels
+svg.append("text")
+  .attr("x", width / 2).attr("y", height + 42)
+  .attr("text-anchor", "middle")
+  .attr("font-size", "12px").attr("fill", "#5a7a99")
+  .text("Year");
+
+svg.append("text")
+  .attr("transform", "rotate(-90)")
+  .attr("x", -height / 2).attr("y", -48)
+  .attr("text-anchor", "middle")
+  .attr("font-size", "12px").attr("fill", "#5a7a99")
+  .text("Population with Access (%)");
+
+const tooltip = document.getElementById("tooltip");
+const container = document.getElementById("chart-container");
+
+// Color palette — water blues + contrast
+const palette = [
+  "#1a6faf","#e07b39","#2ca02c","#d62728","#9467bd",
+  "#8c564b","#17becf","#bcbd22","#e377c2","#7f7f7f"
+];
+
+// Persistent color scale — assigned once per country, never resets
+const colorScale = d3.scaleOrdinal(palette);
+
+let allData = [];
+let activeMode = "improved";
+
+d3.csv("chart1_data.csv").then(raw => {
+  raw.forEach(d => {
+    d.Year = +d.Year;
+    d.water_access = +d.water_access;
+  });
+  allData = raw;
+
+  // Populate region filter
+  const regions = ["All", ...new Set(raw.map(d => d.region).filter(Boolean).sort())];
+  d3.select("#regionFilter").selectAll("option")
+    .data(regions).enter().append("option")
+    .text(d => d).attr("value", d => d);
+
+  // Populate country filter
+  populateCountries("All");
+
+  // Set Most Improved as active visually on load
+  document.getElementById("btnImproved").classList.add("active");
+
+  // Initial render
+  renderChart();
+
+  // Events
+  d3.select("#regionFilter").on("change", () => {
+    populateCountries(d3.select("#regionFilter").node().value);
+    activeMode = null;
+    clearActiveButtons();
+    renderChart();
+  });
+
+  d3.select("#countryFilter").on("change", () => {
+    activeMode = null;
+    clearActiveButtons();
+    renderChart();
+  });
+
+  d3.select("#btnImproved").on("click", () => {
+    activeMode = "improved";
+    setActiveButton("btnImproved");
+    d3.select("#countryFilter").node().value = "All";
+    renderChart();
+  });
+
+  d3.select("#btnTop5").on("click", () => {
+    activeMode = "top5";
+    setActiveButton("btnTop5");
+    d3.select("#countryFilter").node().value = "All";
+    renderChart();
+  });
+
+  d3.select("#btnBottom5").on("click", () => {
+    activeMode = "bottom5";
+    setActiveButton("btnBottom5");
+    d3.select("#countryFilter").node().value = "All";
+    renderChart();
+  });
+
+  d3.select("#btnReset").on("click", () => {
+    activeMode = null;
+    clearActiveButtons();
+    d3.select("#regionFilter").node().value = "All";
+    d3.select("#countryFilter").node().value = "All";
+    populateCountries("All");
+    renderChart();
+  });
+});
+
+function populateCountries(region) {
+  const filtered = region === "All" ? allData : allData.filter(d => d.region === region);
+  const countries = ["All", ...new Set(filtered.map(d => d.Country).sort())];
+  const sel = d3.select("#countryFilter");
+  sel.selectAll("option").remove();
+  sel.selectAll("option").data(countries).enter().append("option")
+    .text(d => d).attr("value", d => d);
+}
+
+function getFilteredData() {
+  const region = d3.select("#regionFilter").node().value;
+  const country = d3.select("#countryFilter").node().value;
+
+  let data = allData;
+  if (region !== "All") data = data.filter(d => d.region === region);
+  if (country !== "All") data = data.filter(d => d.Country === country);
+  return data;
+}
+
+function renderChart() {
+  linesG.selectAll("*").remove();
+  d3.select("#legend").html("");
+
+  let data = getFilteredData();
+
+  // Group by country
+  let grouped = d3.group(data, d => d.Country);
+
+  // Apply top5/bottom5/improved mode
+  if (activeMode === "top5" || activeMode === "bottom5" || activeMode === "improved") {
+    const byCountry = d3.group(data, d => d.Country);
+
+    if (activeMode === "improved") {
+      // Most improved = biggest increase from 2000 to 2017
+      const improvements = [];
+      byCountry.forEach((values, country) => {
+        const v2000 = values.find(d => d.Year === 2000);
+        const v2017 = values.find(d => d.Year === 2017);
+        if (v2000 && v2017 && !isNaN(v2000.water_access) && !isNaN(v2017.water_access)) {
+          improvements.push({ country, gain: v2017.water_access - v2000.water_access });
+        }
+      });
+      improvements.sort((a, b) => b.gain - a.gain);
+      const selected = improvements.slice(0, 5).map(d => d.country);
+      grouped = new Map([...grouped].filter(([k]) => selected.includes(k)));
+    } else {
+      const latest = d3.rollup(data, v => d3.mean(v, d => d.water_access), d => d.Country);
+      const sorted = [...latest.entries()].sort((a, b) => b[1] - a[1]);
+      const selected = activeMode === "top5"
+        ? sorted.slice(0, 5).map(d => d[0])
+        : sorted.slice(-5).map(d => d[0]);
+      grouped = new Map([...grouped].filter(([k]) => selected.includes(k)));
+    }
+  }
+
+  // If no filter applied and no mode, default to most improved
+  if (activeMode === null && d3.select("#countryFilter").node().value === "All" && grouped.size > 10) {
+    const byCountry = d3.group(getFilteredData(), d => d.Country);
+    const improvements = [];
+    byCountry.forEach((values, country) => {
+      const v2000 = values.find(d => d.Year === 2000);
+      const v2017 = values.find(d => d.Year === 2017);
+      if (v2000 && v2017) improvements.push({ country, gain: v2017.water_access - v2000.water_access });
+    });
+    improvements.sort((a, b) => b.gain - a.gain);
+    const top5 = improvements.slice(0, 5).map(d => d.country);
+    grouped = new Map([...grouped].filter(([k]) => top5.includes(k)));
+  }
+
+  if (grouped.size === 0) {
+    document.getElementById("no-data").style.display = "block";
+    return;
+  }
+  document.getElementById("no-data").style.display = "none";
+
+  // Scales
+  const xScale = d3.scaleLinear()
+    .domain([2000, 2017])
+    .range([0, width]);
+
+  const yScale = d3.scaleLinear()
+    .domain([0, 100])
+    .range([height, 0]);
+
+  // Grid
+  gridG.selectAll("*").remove();
+  gridG.call(
+    d3.axisLeft(yScale).tickSize(-width).tickFormat("").ticks(5)
+  );
+
+  // Axes
+  xAxisG.call(d3.axisBottom(xScale).tickFormat(d3.format("d")).ticks(9));
+  yAxisG.call(d3.axisLeft(yScale).ticks(5).tickFormat(d => d + "%"));
+
+  // Line generator
+  const line = d3.line()
+    .x(d => xScale(d.Year))
+    .y(d => yScale(d.water_access))
+    .curve(d3.curveMonotoneX)
+    .defined(d => !isNaN(d.water_access));
+
+  // Draw lines
+  grouped.forEach((values, country) => {
+    const sorted = values.sort((a, b) => a.Year - b.Year);
+    const color = colorScale(country);
+
+    // Line
+    linesG.append("path")
+      .datum(sorted)
+      .attr("class", "line")
+      .attr("stroke", color)
+      .attr("d", line)
+      .on("mousemove", function(event) {
+        showTooltip(event, country, null, null, color);
+      })
+      .on("mouseleave", hideTooltip);
+
+    // Dots
+    linesG.selectAll(`.dot-${country.replace(/\s/g,"_")}`)
+      .data(sorted)
+      .enter().append("circle")
+      .attr("class", "dot")
+      .attr("cx", d => xScale(d.Year))
+      .attr("cy", d => yScale(d.water_access))
+      .attr("r", 3.5)
+      .attr("fill", color)
+      .attr("stroke", "white")
+      .attr("stroke-width", 1.5)
+      .on("mousemove", function(event, d) {
+        showTooltip(event, country, d.Year, d.water_access, color);
+      })
+      .on("mouseleave", hideTooltip);
+
+    // Legend
+    const item = d3.select("#legend").append("div").attr("class", "legend-item");
+    item.append("div").attr("class", "legend-color")
+      .style("background", color);
+    item.append("span").text(country);
+  });
+}
+
+function showTooltip(event, country, year, value, color) {
+  const rect = container.getBoundingClientRect();
+  const x = event.clientX - rect.left + 12;
+  const y = event.clientY - rect.top - 10;
+  tooltip.style.opacity = "1";
+  tooltip.style.left = x + "px";
+  tooltip.style.top = y + "px";
+  tooltip.innerHTML = year
+    ? `<strong>${country}</strong><br>Year: ${year}<br>Access: ${value.toFixed(1)}%`
+    : `<strong>${country}</strong>`;
+}
+
+function hideTooltip() {
+  tooltip.style.opacity = "0";
+}
+
+function setActiveButton(id) {
+  document.querySelectorAll(".btn-group button").forEach(b => b.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+function clearActiveButtons() {
+  document.querySelectorAll(".btn-group button").forEach(b => b.classList.remove("active"));
+}
+</script>
+</body>
+</html>
