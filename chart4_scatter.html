@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chart 4 – GDP vs Water Access</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f7ff;
+      color: #1a2e3b;
+      padding: 24px;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a4a7a;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #5a7a99;
+      margin-bottom: 16px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+
+    .controls label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a4a7a;
+      margin-right: 4px;
+    }
+
+    select {
+      padding: 6px 10px;
+      border: 1.5px solid #a0c4e8;
+      border-radius: 6px;
+      background: white;
+      font-size: 13px;
+      color: #1a2e3b;
+      cursor: pointer;
+    }
+
+    button {
+      padding: 6px 14px;
+      border: 1.5px solid #a0c4e8;
+      border-radius: 6px;
+      background: white;
+      font-size: 13px;
+      color: #1a4a7a;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    button:hover {
+      background: #1a4a7a;
+      color: white;
+      border-color: #1a4a7a;
+    }
+
+    #chart-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(26,74,122,0.10);
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .tooltip {
+      position: absolute;
+      background: #1a2e3b;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      line-height: 1.8;
+      z-index: 10;
+    }
+
+    .tooltip strong {
+      color: #7ec8e3;
+    }
+  </style>
+</head>
+<body>
+
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:2px;">
+    <div style="width:4px; height:22px; background:#1a4a7a; border-radius:2px;"></div>
+    <h2 style="margin:0;">Chart 4 – GDP per Capita vs Water Access</h2>
+  </div>
+  <p class="subtitle" style="margin-left:14px;">Each dot represents one country in one year (2017)</p>
+
+  <div class="controls">
+    <div>
+      <label>Region:</label>
+      <select id="regionFilter">
+        <option value="All">All Regions</option>
+      </select>
+    </div>
+    <button id="resetZoom">Reset Zoom</button>
+  </div>
+
+  <div id="chart-container">
+    <div class="tooltip" id="tooltip"></div>
+    <div id="loading-msg" style="text-align:center; padding:60px 0; color:#5a7a99; font-size:13px;">Loading chart data...</div>
+    <svg id="scatter" style="display:none;"></svg>
+  </div>
+
+  <script>
+    // ============================================
+    // STEP 1: Chart dimensions
+    // ============================================
+    const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+    const width = 760 - margin.left - margin.right;
+    const height = 460 - margin.top - margin.bottom;
+    const legendSpace = 70;
+
+    const svg = d3.select("#scatter")
+      .attr("width", width + margin.left + margin.right)
+      .attr("height", height + margin.top + margin.bottom + legendSpace);
+
+    // Clip path so dots/lines don't spill outside the chart area when zoomed
+    svg.append("defs").append("clipPath")
+      .attr("id", "clip")
+      .append("rect")
+      .attr("width", width)
+      .attr("height", height);
+
+    const g = svg.append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // A separate group just for the dots, with clipping applied
+    const dotsGroup = g.append("g")
+      .attr("clip-path", "url(#clip)");
+
+    // ============================================
+    // STEP 2: Load both datasets
+    // ============================================
+    Promise.all([
+      d3.csv("unified_clean.csv"),
+      d3.csv("jmp_clean.csv")
+    ]).then(([gdpData, regionData]) => {
+    // Hide loading message, show the actual chart
+      document.getElementById("loading-msg").style.display = "none";
+      document.getElementById("scatter").style.display = "block";
+
+      const regionLookup = {};
+      regionData.forEach(d => {
+        if (d["Country"] && d["WHO region"]) {
+          regionLookup[d["Country"]] = d["WHO region"];
+        }
+      });
+
+      const year = 2017;
+     const rawFiltered = gdpData
+        .filter(d => +d["Year"] === year)
+        .filter(d => d["GDP per Capita"] !== "" && d["Basic Drinking Water Services"] !== "")
+        .map(d => ({
+          country: d["Country"],
+          gdp: +d["GDP per Capita"],
+          waterAccess: +d["Basic Drinking Water Services"],
+          region: regionLookup[d["Country"]] || "Unknown"
+        }));
+
+      const seen = new Set();
+      const filtered = rawFiltered.filter(d => {
+        if (seen.has(d.country)) return false;
+        seen.add(d.country);
+        return true;
+      });
+
+      // ============================================
+      // STEP 3: Build X and Y scales
+      // ============================================
+      const xScale = d3.scaleLog()
+        .domain([d3.min(filtered, d => d.gdp), d3.max(filtered, d => d.gdp) * 1.05])
+        .range([0, width]);
+
+      const yScale = d3.scaleLinear()
+        .domain([0, 100])
+        .range([height, 0]);
+
+      // Draw X axis (outside the zoomed group, updates separately)
+      const xAxisG = svg.append("g")
+        .attr("transform", `translate(${margin.left},${margin.top + height})`)
+        .call(d3.axisBottom(xScale)
+          .tickValues([100, 1000, 10000, 100000])
+          .tickFormat(d => "$" + d3.format("~s")(d))
+        );
+
+      // Draw Y axis (outside the zoomed group, updates separately)
+      const yAxisG = svg.append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`)
+        .call(d3.axisLeft(yScale).ticks(8).tickFormat(d => d + "%"));
+
+      // X axis label
+      svg.append("text")
+        .attr("x", margin.left + width / 2)
+        .attr("y", height + margin.top + 40)
+        .attr("text-anchor", "middle")
+        .style("font-size", "12px")
+        .style("fill", "#5a7a99")
+        .text("GDP per Capita (USD)");
+
+      // Y axis label
+      svg.append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("x", -(margin.top + height / 2))
+        .attr("y", 18)
+        .attr("text-anchor", "middle")
+        .style("font-size", "12px")
+        .style("fill", "#5a7a99")
+        .text("Water Access (%)");
+
+      // ============================================
+      // STEP 4: Color scale for regions
+      // ============================================
+      const regions = [...new Set(filtered.map(d => d.region))].sort();
+
+      const regionSel = document.getElementById("regionFilter");
+      regions.forEach(r => {
+        const opt = document.createElement("option");
+        opt.value = r;
+        opt.textContent = r;
+        regionSel.appendChild(opt);
+      });
+
+      const colorScale = d3.scaleOrdinal()
+        .domain(regions)
+        .range(["#1a4a7a", "#1a6faf", "#7ec8e3", "#e07b39", "#9b59b6", "#27ae60", "#c0392b"]);
+
+      // ============================================
+      // Draw legend (below chart)
+      // ============================================
+      const legend = svg.append("g")
+        .attr("transform", `translate(${margin.left}, ${margin.top + height + 60})`);
+
+      regions.forEach((region, i) => {
+        const col = i % 3;
+        const row = Math.floor(i / 3);
+        const item = legend.append("g")
+          .attr("transform", `translate(${col * 220}, ${row * 22})`);
+
+        item.append("circle")
+          .attr("r", 5)
+          .attr("fill", colorScale(region));
+
+        item.append("text")
+          .attr("x", 10)
+          .attr("y", 4)
+          .style("font-size", "11px")
+          .style("fill", "#1a2e3b")
+          .text(region);
+      });
+
+      // ============================================
+      // STEP 5: Draw the dots (function so we can redraw on filter/zoom)
+      // ============================================
+      const tooltip = document.getElementById("tooltip");
+      const container = document.getElementById("chart-container");
+      let currentRegion = "All";
+
+      function drawDots(selectedRegion, xS, yS) {
+        const dataToShow = selectedRegion === "All"
+          ? filtered
+          : filtered.filter(d => d.region === selectedRegion);
+
+        dotsGroup.selectAll(".dot")
+          .data(dataToShow, d => d.country)
+          .join(
+            enter => enter.append("circle")
+              .attr("class", "dot")
+              .attr("cx", d => xS(d.gdp))
+              .attr("cy", d => yS(d.waterAccess))
+              .attr("r", 0)
+              .attr("fill", d => colorScale(d.region))
+              .attr("opacity", 0.75)
+              .attr("stroke", "#fff")
+              .attr("stroke-width", 0.5)
+              .style("cursor", "pointer")
+              .call(enter => enter.transition().duration(400).attr("r", 5)),
+            update => update
+              .attr("cx", d => xS(d.gdp))
+              .attr("cy", d => yS(d.waterAccess)),
+            exit => exit.transition().duration(300).attr("r", 0).remove()
+          )
+          .on("mousemove", function (event, d) {
+            const rect = container.getBoundingClientRect();
+            tooltip.style.opacity = "1";
+            tooltip.style.left = (event.clientX - rect.left + 14) + "px";
+            tooltip.style.top = (event.clientY - rect.top - 14) + "px";
+            tooltip.innerHTML = `
+              <strong>${d.country}</strong><br>
+              Region: ${d.region}<br>
+              GDP per Capita: $${d3.format(",")(Math.round(d.gdp))}<br>
+              Water Access: ${d.waterAccess.toFixed(1)}%
+            `;
+          })
+          .on("mouseleave", function () {
+            tooltip.style.opacity = "0";
+          });
+      }
+
+      // Initial draw
+      drawDots("All", xScale, yScale);
+
+      // Region dropdown
+      regionSel.addEventListener("change", function () {
+        currentRegion = this.value;
+        drawDots(currentRegion, xScale, yScale);
+      });
+
+      // ============================================
+      // Linked interaction — listen for country clicks from Chart 3 (map)
+      // ============================================
+      window.addEventListener("countrySelected", (e) => {
+        const chart4NameMap = {
+          "USA": "United States",
+          "England": "United Kingdom",
+          "South Korea": "South Korea",
+          "Russia": "Russia"
+        };
+        const selectedCountryName = chart4NameMap[e.detail.country] || e.detail.country;
+
+        // Highlight the matching dot, dim the rest
+        dotsGroup.selectAll(".dot")
+          .attr("stroke", d => d.country === selectedCountryName ? "#e07b39" : "#fff")
+          .attr("stroke-width", d => d.country === selectedCountryName ? 2.5 : 0.5)
+          .attr("r", d => d.country === selectedCountryName ? 8 : 5)
+          .attr("opacity", d => d.country === selectedCountryName ? 1 : 0.4);
+      });
+
+      // ============================================
+      // STEP 6: Zoom and pan (added here, AFTER scales/axes exist)
+      // ============================================
+      const zoom = d3.zoom()
+        .scaleExtent([1, 8])
+        .extent([[0, 0], [width, height]])
+        .on("zoom", (event) => {
+          const xScaleZoomed = event.transform.rescaleX(xScale);
+          const yScaleZoomed = event.transform.rescaleY(yScale);
+
+          xAxisG.call(d3.axisBottom(xScaleZoomed)
+            .tickValues([100, 1000, 10000, 100000])
+            .tickFormat(d => "$" + d3.format("~s")(d))
+          );
+          yAxisG.call(d3.axisLeft(yScaleZoomed).ticks(8).tickFormat(d => d + "%"));
+
+          drawDots(currentRegion, xScaleZoomed, yScaleZoomed);
+        });
+
+      svg.call(zoom);
+
+      document.getElementById("resetZoom").addEventListener("click", () => {
+        svg.transition().duration(500).call(
+          zoom.transform, d3.zoomIdentity
+        );
+      });
+
+    });
+  </script>
+</body>
+</html>

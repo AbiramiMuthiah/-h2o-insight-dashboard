@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chart 3 – World Water Access Map</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f7ff;
+      color: #1a2e3b;
+      padding: 24px;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a4a7a;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #5a7a99;
+      margin-bottom: 16px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+
+    .controls label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a4a7a;
+      margin-right: 4px;
+    }
+
+    select {
+      padding: 6px 10px;
+      border: 1.5px solid #a0c4e8;
+      border-radius: 6px;
+      background: white;
+      font-size: 13px;
+      color: #1a2e3b;
+      cursor: pointer;
+      outline: none;
+    }
+
+    select:focus { border-color: #1a4a7a; }
+
+    input[type=range] {
+      accent-color: #1a4a7a;
+      width: 180px;
+      cursor: pointer;
+    }
+
+    #year-label {
+      font-weight: 700;
+      color: #1a4a7a;
+      font-size: 14px;
+      min-width: 36px;
+    }
+
+    button {
+      padding: 6px 14px;
+      border: 1.5px solid #a0c4e8;
+      border-radius: 6px;
+      background: white;
+      font-size: 13px;
+      color: #1a4a7a;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    button:hover {
+      background: #1a4a7a;
+      color: white;
+      border-color: #1a4a7a;
+    }
+
+    #map-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(26,74,122,0.10);
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Each country shape */
+    .country {
+      stroke: #ffffff;
+      stroke-width: 0.5px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .country:hover {
+      opacity: 0.75;
+      stroke-width: 1.5px;
+    }
+
+    /* Selected country gets orange border */
+    .country.selected {
+      stroke: #e07b39 !important;
+      stroke-width: 2.5px !important;
+      opacity: 1 !important;
+    }
+
+    /* Tooltip */
+    .tooltip {
+      position: absolute;
+      background: #1a2e3b;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      line-height: 1.8;
+      z-index: 10;
+      max-width: 220px;
+    }
+
+    .tooltip strong { color: #7ec8e3; }
+
+    /* Legend row */
+    #legend {
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      color: #5a7a99;
+      flex-wrap: wrap;
+    }
+
+    #legend-gradient {
+      width: 200px;
+      height: 12px;
+      border-radius: 6px;
+    }
+
+    .legend-nodata {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 16px;
+    }
+
+    .legend-nodata-box {
+      width: 16px;
+      height: 12px;
+      background: #d0d0d0;
+      border-radius: 3px;
+    }
+
+    /* Selected country info banner */
+    #selected-banner {
+      display: none;
+      margin-top: 10px;
+      padding: 8px 14px;
+      background: #e8f4fd;
+      border-left: 4px solid #1a4a7a;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #1a2e3b;
+    }
+
+    #selected-banner strong { color: #1a4a7a; }
+  </style>
+</head>
+<body>
+
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:2px;">
+    <div style="width:4px; height:22px; background:#1a4a7a; border-radius:2px;"></div>
+    <h2 style="margin:0;">Chart 3 – World Water Access Map (2000–2017)</h2>
+  </div>
+  <p class="subtitle" style="margin-left:14px;">
+    Countries colored by % of population using safely managed drinking water — click a country to explore
+  </p>
+  <p style="font-size:11px;color:#8aa5bd;margin-bottom:16px;">
+    Note: Grey countries indicate no reported data for this indicator in the JMP dataset (e.g. India, China, Australia, most of Africa).
+  </p>
+
+  <div class="controls">
+    <div>
+      <label>Year:</label>
+      <input type="range" id="yearSlider" min="2000" max="2017" value="2017" step="1" />
+      <span id="year-label">2017</span>
+    </div>
+    <div>
+      <label>Region:</label>
+      <select id="regionFilter">
+        <option value="All">All Regions</option>
+      </select>
+    </div>
+    <button id="resetZoom">Reset Zoom</button>
+  </div>
+
+  <div id="map-container">
+    <div class="tooltip" id="tooltip"></div>
+    <div id="loading-msg" style="text-align:center; padding:60px 0; color:#5a7a99; font-size:13px;">Loading map data...</div>
+    <svg id="map" style="display:none;"></svg>
+    <div id="legend">
+      <span>0%</span>
+      <canvas id="legend-gradient" width="200" height="12"></canvas>
+      <span>100%</span>
+      <div class="legend-nodata">
+        <div class="legend-nodata-box"></div>
+        <span>No data</span>
+      </div>
+    </div>
+    <div id="selected-banner"></div>
+  </div>
+
+  <script>
+    // =============================================
+    // SIZE SETUP
+    // =============================================
+    const width = 860;
+    const height = 480;
+
+    const svg = d3.select("#map")
+      .attr("width", width)
+      .attr("height", height);
+
+    // Group inside SVG — zoom applies to this group
+    const g = svg.append("g");
+
+    // =============================================
+    // ZOOM & PAN
+    // =============================================
+    const zoom = d3.zoom()
+      .scaleExtent([1, 8])
+      .on("zoom", (event) => {
+        g.attr("transform", event.transform);
+      });
+
+    svg.call(zoom);
+
+    // Reset zoom button
+    document.getElementById("resetZoom").addEventListener("click", () => {
+      svg.transition().duration(500).call(
+        zoom.transform, d3.zoomIdentity
+      );
+      // Clear any selected country
+      g.selectAll(".country")
+        .classed("selected", false)
+        .attr("stroke", "#ffffff")
+        .attr("stroke-width", 0.5);
+      document.getElementById("selected-banner").style.display = "none";
+    });
+
+    // =============================================
+    // MAP PROJECTION
+    // Natural Earth = the nice rounded world map style
+    // =============================================
+    const projection = d3.geoNaturalEarth1()
+      .scale(140)
+      .translate([width / 2, height / 2]);
+
+    const path = d3.geoPath().projection(projection);
+
+    // =============================================
+    // COLOR SCALE
+    // Light blue = low access, Dark blue = high access
+    // =============================================
+    const colorScale = d3.scaleSequential()
+      .domain([0, 100])
+      .interpolator(d3.interpolateBlues);
+
+    const noDataColor = "#d0d0d0";
+
+    // =============================================
+    // NAME MATCHING DICTIONARY
+    // GeoJSON country name → our CSV country name
+    // =============================================
+   const nameMap = {
+  "USA": "United States of America",
+  "England": "United Kingdom of Great Britain and Northern Ireland",
+  "South Korea": "Republic of Korea",
+  "North Korea": "Democratic People's Republic of Korea",
+  "Laos": "Lao People's Democratic Republic",
+  "Macedonia": "Republic of North Macedonia",
+  "Moldova": "Republic of Moldova",
+  "Russia": "Russian Federation",
+  "Iran": "Iran (Islamic Republic of)",
+  "Czech Republic": "Czechia",
+  "Republic of the Congo": "Congo"
+};
+
+    // =============================================
+    // TOOLTIP & CONTAINER
+    // =============================================
+    const tooltip = document.getElementById("tooltip");
+    const container = document.getElementById("map-container");
+
+    // Track selected country
+    let selectedCountry = null;
+
+    // =============================================
+    // LOAD DATA
+    // =============================================
+    Promise.all([
+      d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"),
+      d3.csv("jmp_clean.csv")
+    ]).then(([geoData, csvData]) => {
+      // Hide loading message, show the actual map
+      document.getElementById("loading-msg").style.display = "none";
+      document.getElementById("map").style.display = "block";
+
+      // Filter: water access indicator, national level only
+const waterData = csvData.filter(d =>
+  d["Indicator"] === "Population using safely managed drinking-water services (%)" &&
+  d["Residence Area Type"] === "Total"
+);
+
+
+      // Populate region dropdown from data
+      const regions = [
+        "All",
+        ...new Set(waterData.map(d => d["WHO region"]).filter(Boolean).sort())
+      ];
+      const regionSel = document.getElementById("regionFilter");
+      regions.forEach(r => {
+        const opt = document.createElement("option");
+        opt.value = r;
+        opt.textContent = r;
+        regionSel.appendChild(opt);
+      });
+
+      // Draw legend gradient bar
+      drawLegend();
+
+      // State variables
+      let currentYear = 2017;
+      let currentRegion = "All";
+
+      // First draw
+      drawMap(geoData, waterData, currentYear, currentRegion);
+
+      // ---- Year slider ----
+      document.getElementById("yearSlider").addEventListener("input", function () {
+        currentYear = +this.value;
+        document.getElementById("year-label").textContent = currentYear;
+        drawMap(geoData, waterData, currentYear, currentRegion);
+      });
+
+      // ---- Region filter ----
+      document.getElementById("regionFilter").addEventListener("change", function () {
+        currentRegion = this.value;
+        drawMap(geoData, waterData, currentYear, currentRegion);
+      });
+
+      // ---- Listen for country selection from other charts (linked interaction) ----
+      window.addEventListener("countrySelected", (e) => {
+        const country = e.detail.country;
+        highlightCountry(country);
+      });
+
+    });
+
+    // =============================================
+    // DRAW MAP FUNCTION
+    // Runs every time year or region changes
+    // =============================================
+    function drawMap(geoData, waterData, year, region) {
+
+      // Build lookup: csvCountryName → { value, whoRegion }
+      const dataMap = {};
+      waterData
+        .filter(d => +d["Year"] === year)
+        .filter(d => region === "All" || d["WHO region"] === region)
+        .forEach(d => {
+          dataMap[d["Country"]] = {
+            value: +d["Numeric"],
+            whoRegion: d["WHO region"]
+          };
+        });
+
+      // Draw or update country paths
+      g.selectAll(".country")
+        .data(geoData.features)
+        .join("path")
+        .attr("class", d =>
+          // Keep "selected" class if this country is currently selected
+          selectedCountry === (nameMap[d.properties.name] || d.properties.name)
+            ? "country selected"
+            : "country"
+        )
+        .attr("d", path)
+        .attr("fill", d => {
+          const geoName = d.properties.name;
+          const csvName = nameMap[geoName] || geoName;
+          const match = dataMap[csvName];
+          return match && !isNaN(match.value)
+            ? colorScale(match.value)
+            : noDataColor;
+        })
+        // Hover tooltip
+        .on("mousemove", function (event, d) {
+          const geoName = d.properties.name;
+          const csvName = nameMap[geoName] || geoName;
+          const match = dataMap[csvName];
+          const rect = container.getBoundingClientRect();
+
+          tooltip.style.opacity = "1";
+          tooltip.style.left = (event.clientX - rect.left + 14) + "px";
+          tooltip.style.top = (event.clientY - rect.top - 14) + "px";
+
+          tooltip.innerHTML = match
+            ? `<strong>${geoName}</strong><br>
+               Region: ${match.whoRegion}<br>
+               Water Access: ${match.value.toFixed(1)}%<br>
+               <span style="color:#a0c4e8;font-size:11px;">Click to explore</span>`
+            : `<strong>${geoName}</strong><br>
+               <span style="color:#a0c4e8;">No data available</span>`;
+        })
+        .on("mouseleave", function () {
+          tooltip.style.opacity = "0";
+        })
+        // Country click — highlights and fires linked event
+        .on("click", function (event, d) {
+          const geoName = d.properties.name;
+          const csvName = nameMap[geoName] || geoName;
+          const match = dataMap[csvName];
+
+          // Update selected country
+          selectedCountry = csvName;
+
+          // Clear all selections then highlight clicked one
+          g.selectAll(".country").classed("selected", false);
+          d3.select(event.target).classed("selected", true).raise();
+
+          // Show info banner below map
+          const banner = document.getElementById("selected-banner");
+          banner.style.display = "block";
+          banner.innerHTML = match
+            ? `<strong>${geoName}</strong> — Water Access: <strong>${match.value.toFixed(1)}%</strong> | Region: ${match.whoRegion}`
+            : `<strong>${geoName}</strong> — No data available for this year`;
+
+          // Fire linked interaction event for Chart 4
+          // geoName = the simple/common name (e.g. "Russia", "USA") which matches unified_clean.csv better
+          window.dispatchEvent(new CustomEvent("countrySelected", {
+            detail: { country: geoName, csvCountry: csvName }
+          }));
+        });
+    }
+
+    // =============================================
+    // HIGHLIGHT A COUNTRY (called by other charts)
+    // =============================================
+    function highlightCountry(csvName) {
+      g.selectAll(".country")
+        .classed("selected", false)
+        .attr("stroke", "#ffffff")
+        .attr("stroke-width", 0.5);
+
+      g.selectAll(".country")
+        .filter(d => (nameMap[d.properties.name] || d.properties.name) === csvName)
+        .classed("selected", true)
+        .attr("stroke", "#e07b39")
+        .attr("stroke-width", 2.5)
+        .raise();
+    }
+
+    // =============================================
+    // DRAW COLOR LEGEND
+    // =============================================
+    function drawLegend() {
+      const canvas = document.getElementById("legend-gradient");
+      const ctx = canvas.getContext("2d");
+      for (let i = 0; i < 200; i++) {
+        ctx.fillStyle = colorScale(i / 2);
+        ctx.fillRect(i, 0, 1, 12);
+      }
+    }
+
+  </script>
+</body>
+</html>
