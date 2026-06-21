@@ -33,6 +33,10 @@
       flex-wrap: wrap;
       margin-bottom: 16px;
       align-items: center;
+      background: white;
+      padding: 14px 18px;
+      border-radius: 10px;
+      box-shadow: 0 1px 6px rgba(26,74,122,0.08);
     }
 
     .controls label {
@@ -72,11 +76,12 @@
 
     #chart-container {
       background: white;
-      border-radius: 12px;
-      box-shadow: 0 2px 12px rgba(26,74,122,0.10);
-      padding: 20px;
+      border-radius: 14px;
+      box-shadow: 0 4px 20px rgba(26,74,122,0.14);
+      padding: 24px;
       position: relative;
       overflow: hidden;
+      border: 1px solid #e8f0fa;
     }
 
     .tooltip {
@@ -96,6 +101,15 @@
     .tooltip strong {
       color: #7ec8e3;
     }
+
+    .dot {
+      transition: r 0.15s ease, opacity 0.15s ease;
+    }
+
+    .dot:hover {
+      opacity: 1 !important;
+      stroke-width: 2px !important;
+    }
   </style>
 </head>
 <body>
@@ -114,6 +128,7 @@
       </select>
     </div>
     <button id="resetZoom">Reset Zoom</button>
+    <button id="resetFilter">Reset Filters</button>
   </div>
 
   <div id="chart-container">
@@ -123,9 +138,6 @@
   </div>
 
   <script>
-    // ============================================
-    // STEP 1: Chart dimensions
-    // ============================================
     const margin = { top: 20, right: 30, bottom: 50, left: 60 };
     const width = 760 - margin.left - margin.right;
     const height = 460 - margin.top - margin.bottom;
@@ -135,7 +147,7 @@
       .attr("width", width + margin.left + margin.right)
       .attr("height", height + margin.top + margin.bottom + legendSpace);
 
-    // Clip path so dots/lines don't spill outside the chart area when zoomed
+    // keeps dots from spilling outside the chart area when zoomed in
     svg.append("defs").append("clipPath")
       .attr("id", "clip")
       .append("rect")
@@ -145,21 +157,17 @@
     const g = svg.append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    // A separate group just for the dots, with clipping applied
     const dotsGroup = g.append("g")
       .attr("clip-path", "url(#clip)");
 
-    // ============================================
-    // STEP 2: Load both datasets
-    // ============================================
     Promise.all([
       d3.csv("unified_clean.csv"),
       d3.csv("jmp_clean.csv")
     ]).then(([gdpData, regionData]) => {
-    // Hide loading message, show the actual chart
       document.getElementById("loading-msg").style.display = "none";
       document.getElementById("scatter").style.display = "block";
 
+      // unified_clean.csv has GDP/water data but no region column, so we look it up from jmp_clean.csv
       const regionLookup = {};
       regionData.forEach(d => {
         if (d["Country"] && d["WHO region"]) {
@@ -168,7 +176,7 @@
       });
 
       const year = 2017;
-     const rawFiltered = gdpData
+      const rawFiltered = gdpData
         .filter(d => +d["Year"] === year)
         .filter(d => d["GDP per Capita"] !== "" && d["Basic Drinking Water Services"] !== "")
         .map(d => ({
@@ -178,6 +186,7 @@
           region: regionLookup[d["Country"]] || "Unknown"
         }));
 
+      // some countries had duplicate rows for the same year, keep just the first
       const seen = new Set();
       const filtered = rawFiltered.filter(d => {
         if (seen.has(d.country)) return false;
@@ -185,9 +194,7 @@
         return true;
       });
 
-      // ============================================
-      // STEP 3: Build X and Y scales
-      // ============================================
+      // log scale since GDP has a few extreme outliers that squash everything else on a linear scale
       const xScale = d3.scaleLog()
         .domain([d3.min(filtered, d => d.gdp), d3.max(filtered, d => d.gdp) * 1.05])
         .range([0, width]);
@@ -196,7 +203,7 @@
         .domain([0, 100])
         .range([height, 0]);
 
-      // Draw X axis (outside the zoomed group, updates separately)
+      // axes live outside the zoomed group so we can redraw them with rescaled values on zoom
       const xAxisG = svg.append("g")
         .attr("transform", `translate(${margin.left},${margin.top + height})`)
         .call(d3.axisBottom(xScale)
@@ -204,12 +211,10 @@
           .tickFormat(d => "$" + d3.format("~s")(d))
         );
 
-      // Draw Y axis (outside the zoomed group, updates separately)
       const yAxisG = svg.append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`)
         .call(d3.axisLeft(yScale).ticks(8).tickFormat(d => d + "%"));
 
-      // X axis label
       svg.append("text")
         .attr("x", margin.left + width / 2)
         .attr("y", height + margin.top + 40)
@@ -218,7 +223,6 @@
         .style("fill", "#5a7a99")
         .text("GDP per Capita (USD)");
 
-      // Y axis label
       svg.append("text")
         .attr("transform", "rotate(-90)")
         .attr("x", -(margin.top + height / 2))
@@ -228,9 +232,6 @@
         .style("fill", "#5a7a99")
         .text("Water Access (%)");
 
-      // ============================================
-      // STEP 4: Color scale for regions
-      // ============================================
       const regions = [...new Set(filtered.map(d => d.region))].sort();
 
       const regionSel = document.getElementById("regionFilter");
@@ -245,9 +246,6 @@
         .domain(regions)
         .range(["#1a4a7a", "#1a6faf", "#7ec8e3", "#e07b39", "#9b59b6", "#27ae60", "#c0392b"]);
 
-      // ============================================
-      // Draw legend (below chart)
-      // ============================================
       const legend = svg.append("g")
         .attr("transform", `translate(${margin.left}, ${margin.top + height + 60})`);
 
@@ -269,13 +267,11 @@
           .text(region);
       });
 
-      // ============================================
-      // STEP 5: Draw the dots (function so we can redraw on filter/zoom)
-      // ============================================
       const tooltip = document.getElementById("tooltip");
       const container = document.getElementById("chart-container");
       let currentRegion = "All";
 
+      // takes the scales as params so the same function works for both filtering and zoom redraws
       function drawDots(selectedRegion, xS, yS) {
         const dataToShow = selectedRegion === "All"
           ? filtered
@@ -294,7 +290,10 @@
               .attr("stroke", "#fff")
               .attr("stroke-width", 0.5)
               .style("cursor", "pointer")
-              .call(enter => enter.transition().duration(400).attr("r", 5)),
+              .call(enter => enter.transition()
+                .delay((d, i) => i * 3)
+                .duration(400)
+                .attr("r", 5)),
             update => update
               .attr("cx", d => xS(d.gdp))
               .attr("cy", d => yS(d.waterAccess)),
@@ -306,10 +305,10 @@
             tooltip.style.left = (event.clientX - rect.left + 14) + "px";
             tooltip.style.top = (event.clientY - rect.top - 14) + "px";
             tooltip.innerHTML = `
-              <strong>${d.country}</strong><br>
-              Region: ${d.region}<br>
-              GDP per Capita: $${d3.format(",")(Math.round(d.gdp))}<br>
-              Water Access: ${d.waterAccess.toFixed(1)}%
+              <div style="font-size:14px; font-weight:700; color:#7ec8e3; margin-bottom:4px;">${d.country}</div>
+              <div style="display:flex; justify-content:space-between; gap:12px;"><span style="color:#a0c4e8;">Region</span><span>${d.region}</span></div>
+              <div style="display:flex; justify-content:space-between; gap:12px;"><span style="color:#a0c4e8;">GDP per Capita</span><span style="font-weight:700;">$${d3.format(",")(Math.round(d.gdp))}</span></div>
+              <div style="display:flex; justify-content:space-between; gap:12px;"><span style="color:#a0c4e8;">Water Access</span><span style="font-weight:700;">${d.waterAccess.toFixed(1)}%</span></div>
             `;
           })
           .on("mouseleave", function () {
@@ -317,18 +316,20 @@
           });
       }
 
-      // Initial draw
       drawDots("All", xScale, yScale);
 
-      // Region dropdown
       regionSel.addEventListener("change", function () {
         currentRegion = this.value;
         drawDots(currentRegion, xScale, yScale);
       });
 
-      // ============================================
-      // Linked interaction — listen for country clicks from Chart 3 (map)
-      // ============================================
+      document.getElementById("resetFilter").addEventListener("click", function () {
+        currentRegion = "All";
+        regionSel.value = "All";
+        drawDots(currentRegion, xScale, yScale);
+      });
+
+      // listens for clicks from Chart 3's map to highlight the matching dot here
       window.addEventListener("countrySelected", (e) => {
         const chart4NameMap = {
           "USA": "United States",
@@ -338,7 +339,6 @@
         };
         const selectedCountryName = chart4NameMap[e.detail.country] || e.detail.country;
 
-        // Highlight the matching dot, dim the rest
         dotsGroup.selectAll(".dot")
           .attr("stroke", d => d.country === selectedCountryName ? "#e07b39" : "#fff")
           .attr("stroke-width", d => d.country === selectedCountryName ? 2.5 : 0.5)
@@ -346,9 +346,7 @@
           .attr("opacity", d => d.country === selectedCountryName ? 1 : 0.4);
       });
 
-      // ============================================
-      // STEP 6: Zoom and pan (added here, AFTER scales/axes exist)
-      // ============================================
+      // zoom set up here, after scales/axes exist, since it needs to rescale them
       const zoom = d3.zoom()
         .scaleExtent([1, 8])
         .extent([[0, 0], [width, height]])
