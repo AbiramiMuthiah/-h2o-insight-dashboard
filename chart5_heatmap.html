@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chart 5 – Sanitation Access Heatmap</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f7ff;
+      color: #1a2e3b;
+      padding: 24px;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a4a7a;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #5a7a99;
+      margin-bottom: 16px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+
+    .controls label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a4a7a;
+      margin-right: 4px;
+    }
+
+    select, input[type="text"] {
+      padding: 6px 10px;
+      border: 1.5px solid #a0c4e8;
+      border-radius: 6px;
+      background: white;
+      font-size: 13px;
+      color: #1a2e3b;
+      cursor: pointer;
+      outline: none;
+    }
+
+    input[type="text"] {
+      cursor: text;
+      width: 160px;
+    }
+
+    select:focus, input:focus { border-color: #1a4a7a; }
+
+    .btn-group {
+      display: flex;
+      gap: 6px;
+    }
+
+    button {
+      padding: 6px 14px;
+      border: 1.5px solid #a0c4e8;
+      border-radius: 6px;
+      background: white;
+      font-size: 13px;
+      color: #1a4a7a;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    button.active, button:hover {
+      background: #1a4a7a;
+      color: white;
+      border-color: #1a4a7a;
+    }
+
+    #chart-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(26,74,122,0.10);
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #scroll-wrap {
+      overflow-x: auto;
+      overflow-y: hidden;
+      cursor: grab;
+    }
+    #scroll-wrap:active { cursor: grabbing; }
+
+    .cell {
+      stroke: #ffffff;
+      stroke-width: 1px;
+      cursor: pointer;
+      transition: stroke-width 0.1s;
+    }
+
+    .cell:hover {
+      stroke: #1a4a7a;
+      stroke-width: 2px;
+    }
+
+    .cell.selected-row rect {
+      stroke: #1a4a7a;
+    }
+
+    .row-label {
+      font-size: 11px;
+      fill: #1a2e3b;
+      cursor: pointer;
+    }
+
+    .row-label:hover, .row-label.selected {
+      font-weight: 700;
+      fill: #1a4a7a;
+    }
+
+    /* Tooltip */
+    .tooltip {
+      position: absolute;
+      background: #1a2e3b;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      line-height: 1.6;
+      z-index: 10;
+      max-width: 220px;
+    }
+
+    .tooltip strong { color: #7ec8e3; }
+
+    .axis text { font-size: 11px; fill: #5a7a99; }
+    .axis path, .axis line { stroke: #d0e4f5; }
+
+    .legend-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 16px;
+      font-size: 12px;
+      color: #5a7a99;
+    }
+
+    #no-data {
+      display: none;
+      text-align: center;
+      padding: 40px;
+      color: #5a7a99;
+      font-size: 14px;
+    }
+
+    .zoom-hint {
+      font-size: 11px;
+      color: #8aa6c0;
+      font-style: italic;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Sanitation Access Heatmap (2000–2017)</h2>
+<p class="subtitle">Population using basic sanitation services (%) — by country and year</p>
+
+<div class="controls">
+  <div>
+    <label>View:</label>
+    <div class="btn-group">
+      <button id="btnTop20" class="active">Top 20</button>
+      <button id="btnBottom20">Bottom 20</button>
+      <button id="btnAll">All Countries</button>
+    </div>
+  </div>
+  <div>
+    <label>Search:</label>
+    <input type="text" id="searchBox" placeholder="Type a country name..." />
+  </div>
+  <div>
+    <button id="btnReset">Reset</button>
+  </div>
+</div>
+
+<div id="chart-container">
+  <div id="no-data">No data available for the selected filters.</div>
+  <div class="tooltip" id="tooltip"></div>
+  <div id="scroll-wrap">
+    <svg id="chart"></svg>
+  </div>
+  <div class="legend-wrap" id="legend"></div>
+  <p class="zoom-hint">Scroll horizontally to see all years · click a row to highlight that country across all charts</p>
+</div>
+
+<script>
+const margin = { top: 30, right: 30, bottom: 20, left: 160 };
+const cellWidth = 38;
+const cellHeight = 22;
+const yearsRange = d3.range(2000, 2018);
+const plotWidth = cellWidth * yearsRange.length;
+
+let allData = [];
+let viewMode = "top20";
+let selectedCountry = null;
+let searchTerm = "";
+
+const tooltip = document.getElementById("tooltip");
+const container = document.getElementById("chart-container");
+
+// Color scale — sequential blues, matches dashboard water theme
+const colorScale = d3.scaleSequential(d3.interpolateBlues).domain([0, 100]);
+
+const svg = d3.select("#chart");
+
+d3.csv("chart5_data.csv").then(raw => {
+  raw.forEach(d => {
+    d.Year = +d.Year;
+    d.sanitation_access = +d.sanitation_access;
+  });
+  allData = raw;
+
+  document.getElementById("btnTop20").classList.add("active");
+  renderChart();
+
+  document.getElementById("btnTop20").addEventListener("click", () => {
+    viewMode = "top20"; searchTerm = ""; document.getElementById("searchBox").value = "";
+    setActiveButton("btnTop20"); renderChart();
+  });
+  document.getElementById("btnBottom20").addEventListener("click", () => {
+    viewMode = "bottom20"; searchTerm = ""; document.getElementById("searchBox").value = "";
+    setActiveButton("btnBottom20"); renderChart();
+  });
+  document.getElementById("btnAll").addEventListener("click", () => {
+    viewMode = "all"; searchTerm = ""; document.getElementById("searchBox").value = "";
+    setActiveButton("btnAll"); renderChart();
+  });
+  document.getElementById("btnReset").addEventListener("click", () => {
+    viewMode = "top20"; selectedCountry = null; searchTerm = "";
+    document.getElementById("searchBox").value = "";
+    setActiveButton("btnTop20"); renderChart();
+  });
+  document.getElementById("searchBox").addEventListener("input", (e) => {
+    searchTerm = e.target.value.trim().toLowerCase();
+    renderChart();
+  });
+
+  // Listen for selections made on other charts (map, scatter, bubble)
+  window.addEventListener("countrySelected", (e) => {
+    const country = e.detail.csvCountry || e.detail.country;
+    const match = allData.find(d => d.Country === country);
+    if (match) {
+      selectedCountry = match.Country;
+      renderChart();
+    }
+  });
+});
+
+function getLatestValue(country) {
+  const rows = allData.filter(d => d.Country === country);
+  const latest = rows.reduce((a, b) => (b.Year > a.Year ? b : a), rows[0]);
+  return latest ? latest.sanitation_access : null;
+}
+
+function getCountryList() {
+  let countries = [...new Set(allData.map(d => d.Country))];
+
+  if (searchTerm) {
+    return countries.filter(c => c.toLowerCase().includes(searchTerm)).sort();
+  }
+
+  const ranked = countries
+    .map(c => ({ country: c, value: getLatestValue(c) }))
+    .filter(d => d.value !== null)
+    .sort((a, b) => b.value - a.value);
+
+  if (viewMode === "top20") return ranked.slice(0, 20).map(d => d.country);
+  if (viewMode === "bottom20") return ranked.slice(-20).reverse().map(d => d.country);
+  return ranked.map(d => d.country).sort();
+}
+
+function renderChart() {
+  svg.selectAll("*").remove();
+  d3.select("#legend").html("");
+
+  const countries = getCountryList();
+
+  if (countries.length === 0) {
+    document.getElementById("no-data").style.display = "block";
+    return;
+  }
+  document.getElementById("no-data").style.display = "none";
+
+  const plotHeight = cellHeight * countries.length;
+  svg.attr("width", plotWidth + margin.left + margin.right)
+     .attr("height", plotHeight + margin.top + margin.bottom);
+
+  const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+  const xScale = d3.scaleBand().domain(yearsRange).range([0, plotWidth]).padding(0.04);
+  const yScale = d3.scaleBand().domain(countries).range([0, plotHeight]).padding(0.08);
+
+  // X axis (years) on top
+  g.append("g")
+    .attr("class", "axis")
+    .call(d3.axisTop(xScale).tickFormat(d3.format("d")))
+    .selectAll("text")
+      .attr("transform", "rotate(-40)")
+      .attr("text-anchor", "start")
+      .attr("dx", "4px");
+
+  // Y axis (countries) as clickable labels
+  const dataByCountry = d3.group(allData, d => d.Country);
+
+  const rowLabels = g.selectAll(".row-label")
+    .data(countries)
+    .enter().append("text")
+      .attr("class", d => "row-label" + (d === selectedCountry ? " selected" : ""))
+      .attr("x", -8)
+      .attr("y", d => yScale(d) + yScale.bandwidth() / 2)
+      .attr("text-anchor", "end")
+      .attr("dy", "0.35em")
+      .text(d => d)
+      .on("click", function(event, country) {
+        selectedCountry = country;
+        renderChart();
+        window.dispatchEvent(new CustomEvent("countrySelected", {
+          detail: { country: country, csvCountry: country }
+        }));
+      })
+      .on("mouseenter", function(event, country) {
+        d3.select(this).classed("selected", true);
+      })
+      .on("mouseleave", function(event, country) {
+        if (country !== selectedCountry) d3.select(this).classed("selected", false);
+      });
+
+  // Cells
+  countries.forEach(country => {
+    const values = dataByCountry.get(country) || [];
+    const byYear = new Map(values.map(d => [d.Year, d.sanitation_access]));
+
+    yearsRange.forEach(year => {
+      const value = byYear.get(year);
+      const cellG = g.append("g")
+        .attr("class", "cell" + (country === selectedCountry ? " selected-row" : ""));
+
+      cellG.append("rect")
+        .attr("x", xScale(year))
+        .attr("y", yScale(country))
+        .attr("width", xScale.bandwidth())
+        .attr("height", yScale.bandwidth())
+        .attr("fill", value !== undefined ? colorScale(value) : "#eef3f8")
+        .attr("class", "cell")
+        .on("mousemove", function(event) {
+          const rect = container.getBoundingClientRect();
+          tooltip.style.opacity = "1";
+          tooltip.style.left = (event.clientX - rect.left + 14) + "px";
+          tooltip.style.top = (event.clientY - rect.top - 10) + "px";
+          tooltip.innerHTML = value !== undefined
+            ? `<strong>${country}</strong><br>Year: ${year}<br>Sanitation Access: ${value.toFixed(1)}%`
+            : `<strong>${country}</strong><br>Year: ${year}<br>No data`;
+        })
+        .on("mouseleave", () => { tooltip.style.opacity = "0"; })
+        .on("click", function() {
+          selectedCountry = country;
+          renderChart();
+          window.dispatchEvent(new CustomEvent("countrySelected", {
+            detail: { country: country, csvCountry: country }
+          }));
+        });
+    });
+  });
+
+  // Legend gradient
+  const legendWidth = 160, legendHeight = 10;
+  const legendSvg = d3.select("#legend").append("svg")
+    .attr("width", legendWidth + 50).attr("height", 30);
+
+  const defs = legendSvg.append("defs");
+  const gradient = defs.append("linearGradient").attr("id", "sanGradient")
+    .attr("x1", "0%").attr("x2", "100%");
+  d3.range(0, 1.01, 0.1).forEach(t => {
+    gradient.append("stop").attr("offset", `${t * 100}%`).attr("stop-color", colorScale(t * 100));
+  });
+
+  legendSvg.append("rect")
+    .attr("x", 0).attr("y", 4).attr("width", legendWidth).attr("height", legendHeight)
+    .attr("fill", "url(#sanGradient)").attr("rx", 3);
+
+  legendSvg.append("text").attr("x", 0).attr("y", 26).attr("font-size", "11px").attr("fill", "#5a7a99").text("0%");
+  legendSvg.append("text").attr("x", legendWidth - 22).attr("y", 26).attr("font-size", "11px").attr("fill", "#5a7a99").text("100%");
+
+  d3.select("#legend").append("span").text(`Showing ${countries.length} countries`);
+}
+
+function setActiveButton(id) {
+  document.querySelectorAll(".btn-group button").forEach(b => b.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+</script>
+</body>
+</html>

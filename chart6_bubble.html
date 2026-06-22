@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chart 6 – Animated Water & Sanitation Bubble Chart</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f7ff;
+      color: #1a2e3b;
+      padding: 24px;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a4a7a;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #5a7a99;
+      margin-bottom: 16px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+
+    .controls label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a4a7a;
+      margin-right: 4px;
+    }
+
+    select {
+      padding: 6px 10px;
+      border: 1.5px solid #a0c4e8;
+      border-radius: 6px;
+      background: white;
+      font-size: 13px;
+      color: #1a2e3b;
+      cursor: pointer;
+      outline: none;
+    }
+
+    select:focus { border-color: #1a4a7a; }
+
+    button {
+      padding: 6px 16px;
+      border: 1.5px solid #a0c4e8;
+      border-radius: 6px;
+      background: white;
+      font-size: 13px;
+      color: #1a4a7a;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    button.active, button:hover {
+      background: #1a4a7a;
+      color: white;
+      border-color: #1a4a7a;
+    }
+
+    #playBtn {
+      min-width: 76px;
+    }
+
+    .year-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      min-width: 240px;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      accent-color: #1a4a7a;
+    }
+
+    #yearLabel {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a4a7a;
+      min-width: 42px;
+    }
+
+    #chart-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(26,74,122,0.10);
+      padding: 20px;
+      position: relative;
+    }
+
+    .bubble {
+      cursor: pointer;
+      stroke: white;
+      stroke-width: 1px;
+      transition: stroke-width 0.15s, opacity 0.3s;
+    }
+
+    .bubble:hover { stroke-width: 2.5px; }
+
+    .bubble.dimmed { opacity: 0.18; }
+    .bubble.selected { stroke: #1a2e3b; stroke-width: 2.5px; }
+
+    .quadrant-label {
+      font-size: 11px;
+      fill: #b0c8de;
+      font-style: italic;
+    }
+
+    /* Tooltip */
+    .tooltip {
+      position: absolute;
+      background: #1a2e3b;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      line-height: 1.6;
+      z-index: 10;
+      max-width: 210px;
+    }
+
+    .tooltip strong { color: #7ec8e3; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 3px 8px;
+      border-radius: 20px;
+      border: 1.5px solid #e0eaf5;
+      transition: background 0.15s;
+    }
+
+    .legend-item:hover, .legend-item.muted { background: #e8f4fd; }
+    .legend-item.muted { opacity: 0.4; }
+
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .axis text { font-size: 11px; fill: #5a7a99; }
+    .axis path, .axis line { stroke: #d0e4f5; }
+    .grid line { stroke: #e8f4fd; stroke-dasharray: 3,3; }
+    .grid path { stroke: none; }
+
+    #selected-banner {
+      display: none;
+      background: #eaf3fb;
+      border-left: 4px solid #1a4a7a;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Water & Sanitation Access Over Time (2000–2017)</h2>
+<p class="subtitle">Bubble size = population · color = WHO region · animated by year</p>
+
+<div class="controls">
+  <button id="playBtn">▶ Play</button>
+  <div class="year-control">
+    <input type="range" id="yearSlider" min="2000" max="2017" step="1" value="2000" />
+    <span id="yearLabel">2000</span>
+  </div>
+  <div>
+    <label>Region:</label>
+    <select id="regionFilter">
+      <option value="All">All Regions</option>
+    </select>
+  </div>
+  <button id="btnReset">Reset</button>
+</div>
+
+<div id="chart-container">
+  <div id="selected-banner"></div>
+  <div class="tooltip" id="tooltip"></div>
+  <svg id="chart"></svg>
+  <div class="legend" id="legend"></div>
+</div>
+
+<script>
+const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+const width = 820 - margin.left - margin.right;
+const height = 460 - margin.top - margin.bottom;
+
+const svg = d3.select("#chart")
+  .attr("width", width + margin.left + margin.right)
+  .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+  .attr("transform", `translate(${margin.left},${margin.top})`);
+
+const xAxisG = svg.append("g").attr("class", "axis x-axis").attr("transform", `translate(0,${height})`);
+const yAxisG = svg.append("g").attr("class", "axis y-axis");
+const gridG = svg.append("g").attr("class", "grid");
+const bubblesG = svg.append("g").attr("class", "bubbles");
+
+svg.append("text")
+  .attr("x", width / 2).attr("y", height + 42)
+  .attr("text-anchor", "middle")
+  .attr("font-size", "12px").attr("fill", "#5a7a99")
+  .text("Water Access (%)");
+
+svg.append("text")
+  .attr("transform", "rotate(-90)")
+  .attr("x", -height / 2).attr("y", -48)
+  .attr("text-anchor", "middle")
+  .attr("font-size", "12px").attr("fill", "#5a7a99")
+  .text("Sanitation Access (%)");
+
+const tooltip = document.getElementById("tooltip");
+const container = document.getElementById("chart-container");
+
+const regionColors = {
+  "Africa": "#e07b39",
+  "Americas": "#2ca02c",
+  "Eastern Mediterranean": "#d62728",
+  "Europe": "#1a6faf",
+  "South-East Asia": "#9467bd",
+  "Western Pacific": "#17becf",
+  "Other": "#999999"
+};
+
+const xScale = d3.scaleLinear().domain([0, 100]).range([0, width]);
+const yScale = d3.scaleLinear().domain([0, 100]).range([height, 0]);
+const rScale = d3.scaleSqrt().domain([0, 1.4e9]).range([3, 48]);
+
+let allData = [];
+let regionLookup = {};
+let currentYear = 2000;
+let currentRegion = "All";
+let selectedCountry = null;
+let playing = false;
+let timer = null;
+
+Promise.all([
+  d3.csv("chart6_data.csv"),
+  d3.json("country_region_lookup.json")
+]).then(([raw, lookup]) => {
+  regionLookup = lookup;
+  raw.forEach(d => {
+    d.Year = +d.Year;
+    d.water_access = +d.water_access;
+    d.sanitation_access = +d.sanitation_access;
+    d.population = +d.population;
+    d.gdp_per_capita = +d.gdp_per_capita;
+    d.region = regionLookup[d.Country] || "Other";
+  });
+  allData = raw;
+
+  const regions = ["All", ...Object.keys(regionColors).filter(r =>
+    raw.some(d => d.region === r)
+  )];
+  d3.select("#regionFilter").selectAll("option")
+    .data(regions).enter().append("option")
+    .text(d => d).attr("value", d => d);
+
+  // Axes + grid (static domain 0-100, drawn once)
+  gridG.call(d3.axisLeft(yScale).tickSize(-width).tickFormat("").ticks(5));
+  xAxisG.call(d3.axisBottom(xScale).ticks(5).tickFormat(d => d + "%"));
+  yAxisG.call(d3.axisLeft(yScale).ticks(5).tickFormat(d => d + "%"));
+
+  renderFrame(currentYear);
+  renderLegend();
+
+  // Controls
+  d3.select("#yearSlider").on("input", function() {
+    stopPlaying();
+    currentYear = +this.value;
+    document.getElementById("yearLabel").textContent = currentYear;
+    renderFrame(currentYear);
+  });
+
+  d3.select("#regionFilter").on("change", function() {
+    currentRegion = this.value;
+    renderFrame(currentYear);
+  });
+
+  d3.select("#playBtn").on("click", () => {
+    playing ? stopPlaying() : startPlaying();
+  });
+
+  d3.select("#btnReset").on("click", () => {
+    stopPlaying();
+    currentYear = 2000;
+    currentRegion = "All";
+    selectedCountry = null;
+    d3.select("#yearSlider").node().value = 2000;
+    d3.select("#regionFilter").node().value = "All";
+    document.getElementById("yearLabel").textContent = 2000;
+    document.getElementById("selected-banner").style.display = "none";
+    renderFrame(currentYear);
+  });
+
+  // Linked interaction: highlight when another chart selects a country
+  window.addEventListener("countrySelected", (e) => {
+    const country = e.detail.csvCountry || e.detail.country;
+    const match = allData.find(d => d.Country === country);
+    if (match) {
+      selectedCountry = match.Country;
+      showBanner(selectedCountry);
+      renderFrame(currentYear);
+    }
+  });
+});
+
+function startPlaying() {
+  playing = true;
+  document.getElementById("playBtn").textContent = "⏸ Pause";
+  document.getElementById("playBtn").classList.add("active");
+  timer = setInterval(() => {
+    currentYear = currentYear >= 2017 ? 2000 : currentYear + 1;
+    d3.select("#yearSlider").node().value = currentYear;
+    document.getElementById("yearLabel").textContent = currentYear;
+    renderFrame(currentYear);
+    if (currentYear === 2017) stopPlaying();
+  }, 900);
+}
+
+function stopPlaying() {
+  playing = false;
+  clearInterval(timer);
+  document.getElementById("playBtn").textContent = "▶ Play";
+  document.getElementById("playBtn").classList.remove("active");
+}
+
+function showBanner(country) {
+  const banner = document.getElementById("selected-banner");
+  banner.style.display = "block";
+  banner.innerHTML = `Highlighting <strong>${country}</strong> — click its bubble again, or Reset, to clear.`;
+}
+
+function renderFrame(year) {
+  let frameData = allData.filter(d => d.Year === year);
+  if (currentRegion !== "All") frameData = frameData.filter(d => d.region === currentRegion);
+
+  const t = d3.transition().duration(playing ? 850 : 400).ease(d3.easeLinear);
+
+  const circles = bubblesG.selectAll("circle.bubble")
+    .data(frameData, d => d.Country);
+
+  circles.exit()
+    .transition(t)
+    .attr("r", 0)
+    .remove();
+
+  const entered = circles.enter()
+    .append("circle")
+    .attr("class", "bubble")
+    .attr("cx", d => xScale(d.water_access))
+    .attr("cy", d => yScale(d.sanitation_access))
+    .attr("r", 0)
+    .attr("fill", d => regionColors[d.region] || "#999")
+    .attr("fill-opacity", 0.75);
+
+  entered.merge(circles)
+    .classed("selected", d => d.Country === selectedCountry)
+    .classed("dimmed", d => selectedCountry && d.Country !== selectedCountry)
+    .on("mousemove", function(event, d) {
+      const rect = container.getBoundingClientRect();
+      tooltip.style.opacity = "1";
+      tooltip.style.left = (event.clientX - rect.left + 14) + "px";
+      tooltip.style.top = (event.clientY - rect.top - 10) + "px";
+      tooltip.innerHTML = `<strong>${d.Country}</strong><br>
+        Water Access: ${d.water_access.toFixed(1)}%<br>
+        Sanitation: ${d.sanitation_access.toFixed(1)}%<br>
+        Population: ${d3.format(",")(d.population)}<br>
+        GDP/capita: $${d3.format(",.0f")(d.gdp_per_capita)}`;
+    })
+    .on("mouseleave", () => { tooltip.style.opacity = "0"; })
+    .on("click", function(event, d) {
+      selectedCountry = selectedCountry === d.Country ? null : d.Country;
+      if (selectedCountry) {
+        showBanner(selectedCountry);
+        window.dispatchEvent(new CustomEvent("countrySelected", {
+          detail: { country: d.Country, csvCountry: d.Country }
+        }));
+      } else {
+        document.getElementById("selected-banner").style.display = "none";
+      }
+      renderFrame(currentYear);
+    })
+    .transition(t)
+    .attr("cx", d => xScale(d.water_access))
+    .attr("cy", d => yScale(d.sanitation_access))
+    .attr("r", d => rScale(d.population));
+}
+
+function renderLegend() {
+  const legend = d3.select("#legend");
+  legend.html("");
+  Object.entries(regionColors).forEach(([region, color]) => {
+    const item = legend.append("div").attr("class", "legend-item")
+      .on("click", () => {
+        currentRegion = currentRegion === region ? "All" : region;
+        d3.select("#regionFilter").node().value = currentRegion;
+        renderFrame(currentYear);
+        renderLegend();
+      });
+    if (currentRegion !== "All" && currentRegion !== region) item.classed("muted", true);
+    item.append("div").attr("class", "legend-color").style("background", color);
+    item.append("span").text(region);
+  });
+}
+</script>
+</body>
+</html>
