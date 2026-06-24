@@ -119,19 +119,6 @@
       stroke-width: 1.5px;
     }
 
-    .country.selected {
-      stroke: #e07b39 !important;
-      stroke-width: 2.5px !important;
-      opacity: 1 !important;
-      animation: pulseSelect 0.5s ease;
-    }
-
-    @keyframes pulseSelect {
-      0% { stroke-width: 0.5px !important; }
-      50% { stroke-width: 4px !important; }
-      100% { stroke-width: 2.5px !important; }
-    }
-
     .tooltip {
       position: absolute;
       background: #1a2e3b;
@@ -430,8 +417,7 @@
 
           selectedCountry = csvName;
 
-          g.selectAll(".country").classed("selected", false);
-          d3.select(event.target).classed("selected", true).raise();
+         d3.select(event.target).raise();
 
           const banner = document.getElementById("selected-banner");
           banner.style.display = "block";
@@ -446,17 +432,9 @@
         });
     }
 
-    function highlightCountry(csvName) {
-      g.selectAll(".country")
-        .classed("selected", false)
-        .attr("stroke", "#ffffff")
-        .attr("stroke-width", 0.5);
-
+  function highlightCountry(csvName) {
       g.selectAll(".country")
         .filter(d => (nameMap[d.properties.name] || d.properties.name) === csvName)
-        .classed("selected", true)
-        .attr("stroke", "#e07b39")
-        .attr("stroke-width", 2.5)
         .raise();
     }
 
