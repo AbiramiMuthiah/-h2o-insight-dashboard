@@ -174,6 +174,8 @@
           regionLookup[d["Country"]] = d["WHO region"];
         }
       });
+      // unified_clean.csv spells this one without "the"
+      regionLookup["Democratic Republic of Congo"] = regionLookup["Democratic Republic of the Congo"];
 
       const year = 2017;
       const rawFiltered = gdpData
