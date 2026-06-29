@@ -127,7 +127,6 @@
       fill: #1a4a7a;
     }
 
-    /* Tooltip */
     .tooltip {
       position: absolute;
       background: #1a2e3b;
@@ -182,9 +181,9 @@
   <div>
     <label>View:</label>
     <div class="btn-group">
-      <button id="btnTop20" class="active">Top 20</button>
+      <button id="btnTop20">Top 20</button>
       <button id="btnBottom20">Bottom 20</button>
-      <button id="btnAll">All Countries</button>
+      <button id="btnAll" class="active">All Countries</button>
     </div>
   </div>
   <div>
@@ -214,14 +213,13 @@ const yearsRange = d3.range(2000, 2018);
 const plotWidth = cellWidth * yearsRange.length;
 
 let allData = [];
-let viewMode = "top20";
+let viewMode = "all";
 let selectedCountry = null;
 let searchTerm = "";
 
 const tooltip = document.getElementById("tooltip");
 const container = document.getElementById("chart-container");
 
-// Color scale — sequential blues, matches dashboard water theme
 const colorScale = d3.scaleSequential(d3.interpolateBlues).domain([0, 100]);
 
 const svg = d3.select("#chart");
@@ -233,7 +231,7 @@ d3.csv("chart5_data.csv").then(raw => {
   });
   allData = raw;
 
-  document.getElementById("btnTop20").classList.add("active");
+  setActiveButton("btnAll");
   renderChart();
 
   document.getElementById("btnTop20").addEventListener("click", () => {
@@ -249,16 +247,15 @@ d3.csv("chart5_data.csv").then(raw => {
     setActiveButton("btnAll"); renderChart();
   });
   document.getElementById("btnReset").addEventListener("click", () => {
-    viewMode = "top20"; selectedCountry = null; searchTerm = "";
+    viewMode = "all"; selectedCountry = null; searchTerm = "";
     document.getElementById("searchBox").value = "";
-    setActiveButton("btnTop20"); renderChart();
+    setActiveButton("btnAll"); renderChart();
   });
   document.getElementById("searchBox").addEventListener("input", (e) => {
     searchTerm = e.target.value.trim().toLowerCase();
     renderChart();
   });
 
-  // Listen for selections made on other charts (map, scatter, bubble)
   window.addEventListener("countrySelected", (e) => {
     const country = e.detail.csvCountry || e.detail.country;
     const match = allData.find(d => d.Country === country);
@@ -313,7 +310,6 @@ function renderChart() {
   const xScale = d3.scaleBand().domain(yearsRange).range([0, plotWidth]).padding(0.04);
   const yScale = d3.scaleBand().domain(countries).range([0, plotHeight]).padding(0.08);
 
-  // X axis (years) on top
   g.append("g")
     .attr("class", "axis")
     .call(d3.axisTop(xScale).tickFormat(d3.format("d")))
@@ -322,7 +318,6 @@ function renderChart() {
       .attr("text-anchor", "start")
       .attr("dx", "4px");
 
-  // Y axis (countries) as clickable labels
   const dataByCountry = d3.group(allData, d => d.Country);
 
   const rowLabels = g.selectAll(".row-label")
@@ -348,7 +343,6 @@ function renderChart() {
         if (country !== selectedCountry) d3.select(this).classed("selected", false);
       });
 
-  // Cells
   countries.forEach(country => {
     const values = dataByCountry.get(country) || [];
     const byYear = new Map(values.map(d => [d.Year, d.sanitation_access]));
@@ -385,7 +379,6 @@ function renderChart() {
     });
   });
 
-  // Legend gradient
   const legendWidth = 160, legendHeight = 10;
   const legendSvg = d3.select("#legend").append("svg")
     .attr("width", legendWidth + 50).attr("height", 30);

@@ -240,7 +240,6 @@
       .attr("width", width)
       .attr("height", height);
 
-    // zoom transforms get applied to this group, not the svg directly
     const g = svg.append("g");
 
     const zoom = d3.zoom()
@@ -256,13 +255,11 @@
         zoom.transform, d3.zoomIdentity
       );
       g.selectAll(".country")
-        .classed("selected", false)
-        .attr("stroke", "#ffffff")
-        .attr("stroke-width", 0.5);
+        .style("stroke", "#ffffff")
+        .style("stroke-width", "0.5px");
       document.getElementById("selected-banner").style.display = "none";
     });
 
-    // Natural Earth projection — gives the rounded world map look
     const projection = d3.geoNaturalEarth1()
       .scale(140)
       .translate([width / 2, height / 2]);
@@ -275,7 +272,6 @@
 
     const noDataColor = "#d0d0d0";
 
-    // GeoJSON and our CSV don't always use the same country names, so this maps between them
     const nameMap = {
       "USA": "United States of America",
       "England": "United Kingdom of Great Britain and Northern Ireland",
@@ -294,6 +290,7 @@
     const container = document.getElementById("map-container");
 
     let selectedCountry = null;
+    let latestDataMap = {};
 
     Promise.all([
       d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"),
@@ -306,7 +303,6 @@
       mapEl.style.transition = "opacity 0.6s ease";
       setTimeout(() => { mapEl.style.opacity = "1"; }, 50);
 
-      // only national-level rows for the safely managed water indicator
       const waterData = csvData.filter(d =>
         d["Indicator"] === "Population using safely managed drinking-water services (%)" &&
         d["Residence Area Type"] === "Total"
@@ -351,17 +347,15 @@
         drawMap(geoData, waterData, currentYear, currentRegion);
       });
 
-      // lets Chart 4 tell this chart "highlight this country" too
       window.addEventListener("countrySelected", (e) => {
-        const country = e.detail.country;
-        highlightCountry(country);
+        highlightCountry(e.detail.csvCountry || e.detail.country);
       });
 
     });
 
     function drawMap(geoData, waterData, year, region) {
-
       const dataMap = {};
+      latestDataMap = dataMap;
       waterData
         .filter(d => +d["Year"] === year)
         .filter(d => region === "All" || d["WHO region"] === region)
@@ -375,11 +369,9 @@
       g.selectAll(".country")
         .data(geoData.features)
         .join("path")
-        .attr("class", d =>
-          selectedCountry === (nameMap[d.properties.name] || d.properties.name)
-            ? "country selected"
-            : "country"
-        )
+        .attr("class", "country")
+        .style("stroke", "#ffffff")
+        .style("stroke-width", "0.5px")
         .attr("d", path)
         .attr("fill", d => {
           const geoName = d.properties.name;
@@ -388,6 +380,17 @@
           return match && !isNaN(match.value)
             ? colorScale(match.value)
             : noDataColor;
+        })
+        .on("mouseenter", function() { d3.select(this).style("opacity", 0.75).style("stroke-width", "1.5px"); })
+        .on("mouseleave", function (event, d) {
+          const geoName = d.properties.name;
+          const csvName = nameMap[geoName] || geoName;
+          const isSelected = csvName === selectedCountry;
+          d3.select(this)
+            .style("opacity", 1)
+            .style("stroke-width", isSelected ? "3px" : "0.5px")
+            .style("stroke", isSelected ? "#ffd700" : "#ffffff");
+          tooltip.style.opacity = "0";
         })
         .on("mousemove", function (event, d) {
           const geoName = d.properties.name;
@@ -407,17 +410,13 @@
             : `<div style="font-size:14px; font-weight:700; color:#7ec8e3; margin-bottom:4px;">${geoName}</div>
                <div style="color:#a0c4e8;">No data available</div>`;
         })
-        .on("mouseleave", function () {
-          tooltip.style.opacity = "0";
-        })
         .on("click", function (event, d) {
           const geoName = d.properties.name;
           const csvName = nameMap[geoName] || geoName;
           const match = dataMap[csvName];
 
           selectedCountry = csvName;
-
-         d3.select(event.target).raise();
+          d3.select(event.target).raise();
 
           const banner = document.getElementById("selected-banner");
           banner.style.display = "block";
@@ -425,17 +424,38 @@
             ? `<strong>${geoName}</strong> — Water Access: <strong>${match.value.toFixed(1)}%</strong> | Region: ${match.whoRegion}`
             : `<strong>${geoName}</strong> — No data available for this year`;
 
-          // geoName (e.g. "Russia", "USA") matches unified_clean.csv's naming better than the JMP name
           window.dispatchEvent(new CustomEvent("countrySelected", {
             detail: { country: geoName, csvCountry: csvName }
           }));
         });
     }
 
-  function highlightCountry(csvName) {
+    function highlightCountry(csvName) {
+      const incomingNameMap = { "United States": "USA", "United Kingdom": "England" };
+      csvName = incomingNameMap[csvName] || csvName;
+      selectedCountry = csvName;
+
       g.selectAll(".country")
-        .filter(d => (nameMap[d.properties.name] || d.properties.name) === csvName)
+        .style("stroke", "#ffffff")
+        .style("stroke-width", "0.5px");
+
+      const target = g.selectAll(".country")
+        .filter(d => d.properties.name === csvName || (nameMap[d.properties.name] || d.properties.name) === csvName);
+
+      target
+        .style("stroke", "#ffd700")
+        .style("stroke-width", "3px")
         .raise();
+
+      const matchedDatum = target.data()[0];
+      const geoName = matchedDatum ? matchedDatum.properties.name : csvName;
+      const match = latestDataMap[csvName];
+
+      const banner = document.getElementById("selected-banner");
+      banner.style.display = "block";
+      banner.innerHTML = match
+        ? `<strong>${geoName}</strong> — Water Access: <strong>${match.value.toFixed(1)}%</strong> | Region: ${match.whoRegion}`
+        : `<strong>${geoName}</strong> — No data available for this year`;
     }
 
     function drawLegend() {

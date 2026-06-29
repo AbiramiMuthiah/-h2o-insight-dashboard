@@ -1,0 +1,1749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>H2O Insight — SDG 6 Clean Water & Sanitation Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #f0f7ff;
+    color: #1a2e3b;
+    padding: 0 0 40px 0;
+  }
+
+  .dash-header {
+    background: linear-gradient(135deg, #1a4a7a 0%, #0d2f52 100%);
+    color: white;
+    padding: 28px 32px 22px;
+    margin-bottom: 0;
+  }
+
+  .dash-header h1 {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .dash-header p {
+    font-size: 13px;
+    color: #b8d4ee;
+    max-width: 720px;
+    line-height: 1.5;
+  }
+
+  .global-filters {
+    background: white;
+    margin: -18px 32px 24px;
+    border-radius: 12px;
+    box-shadow: 0 4px 18px rgba(26,74,122,0.15);
+    padding: 14px 20px;
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    align-items: center;
+    position: relative;
+    z-index: 5;
+  }
+
+  .global-filters label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #1a4a7a;
+    margin-right: 4px;
+  }
+
+  .global-filters select {
+    padding: 6px 10px;
+    border: 1.5px solid #a0c4e8;
+    border-radius: 6px;
+    background: white;
+    font-size: 13px;
+    color: #1a2e3b;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .global-filters select:focus { border-color: #1a4a7a; }
+
+  .global-filters button {
+    padding: 6px 14px;
+    border: 1.5px solid #a0c4e8;
+    border-radius: 6px;
+    background: white;
+    font-size: 13px;
+    color: #1a4a7a;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.15s;
+  }
+
+  .global-filters button:hover {
+    background: #1a4a7a;
+    color: white;
+    border-color: #1a4a7a;
+  }
+
+  .global-filters .hint {
+    font-size: 11px;
+    color: #8aa6c0;
+    font-style: italic;
+    margin-left: auto;
+  }
+
+  .dash-grid {
+    padding: 0 32px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+
+  .dash-grid .full-width {
+    grid-column: 1 / -1;
+  }
+
+  .chart-card {
+    background: transparent;
+  }
+
+  .chart-card h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1a4a7a;
+    margin-bottom: 3px;
+  }
+
+  .chart-card .subtitle {
+    font-size: 12.5px;
+    color: #5a7a99;
+    margin-bottom: 14px;
+  }
+
+  @media (max-width: 900px) {
+    .dash-grid { grid-template-columns: 1fr; }
+  }
+
+  .controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    align-items: center;
+  }
+
+  .controls label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #1a4a7a;
+    margin-right: 4px;
+  }
+
+  .controls select, .controls input[type="text"] {
+    padding: 5px 9px;
+    border: 1.5px solid #a0c4e8;
+    border-radius: 6px;
+    background: white;
+    font-size: 12.5px;
+    color: #1a2e3b;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .controls input[type="text"] { cursor: text; width: 140px; }
+  .controls select:focus, .controls input:focus { border-color: #1a4a7a; }
+
+  .btn-group { display: flex; gap: 6px; }
+
+  .controls button {
+    padding: 5px 12px;
+    border: 1.5px solid #a0c4e8;
+    border-radius: 6px;
+    background: white;
+    font-size: 12.5px;
+    color: #1a4a7a;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.15s;
+  }
+
+  .controls button.active, .controls button:hover {
+    background: #1a4a7a;
+    color: white;
+    border-color: #1a4a7a;
+  }
+
+  .chart-box {
+    background: white;
+    border-radius: 14px;
+    box-shadow: 0 4px 20px rgba(26,74,122,0.14);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid #e8f0fa;
+  }
+
+  .tooltip {
+    position: absolute;
+    background: #1a2e3b;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    line-height: 1.7;
+    z-index: 50;
+    max-width: 220px;
+  }
+
+  .tooltip strong { color: #7ec8e3; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    cursor: pointer;
+    padding: 3px 8px;
+    border-radius: 20px;
+    border: 1.5px solid #e0eaf5;
+    transition: background 0.15s;
+  }
+
+  .legend-item:hover, .legend-item.muted { background: #e8f4fd; }
+  .legend-item.muted { opacity: 0.4; }
+
+  .legend-color { width: 12px; height: 12px; border-radius: 50%; }
+  .legend-color.line { width: 14px; height: 3px; border-radius: 2px; }
+
+  .axis text { font-size: 10.5px; fill: #5a7a99; }
+  .axis path, .axis line { stroke: #d0e4f5; }
+  .grid line { stroke: #e8f4fd; stroke-dasharray: 3,3; }
+  .grid path { stroke: none; }
+
+  .no-data {
+    display: none;
+    text-align: center;
+    padding: 40px;
+    color: #5a7a99;
+    font-size: 13px;
+  }
+
+  .selected-banner {
+    display: none;
+    background: linear-gradient(135deg, #e8f4fd 0%, #f0f9ff 100%);
+    border-left: 4px solid #1a4a7a;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 4px rgba(26,74,122,0.08);
+  }
+
+  .loading-msg {
+    text-align: center;
+    padding: 50px 0;
+    color: #5a7a99;
+    font-size: 13px;
+  }
+
+  footer {
+    text-align: center;
+    font-size: 11.5px;
+    color: #8aa6c0;
+    padding: 30px 0 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="dash-header">
+  <h1>H2O Insight — Clean Water & Sanitation Dashboard</h1>
+  <p>This interactive D3.js dashboard was developed for the CDS6324 Data Visualization course to visualize global progress toward SDG 6: Clean Water and Sanitation. It features six interactive charts that explore water and sanitation trends (2000–2017) and their relationship with GDP per capita. TT5L , GROUP G12
+</div>
+
+<div class="global-filters">
+  <div>
+    <label>Region:</label>
+    <select id="globalRegion"><option value="All">All Regions</option></select>
+  </div>
+  <button id="globalReset">Reset Dashboard</button>
+  <span class="hint">Selecting a country on the map, heatmap, or bubble chart highlights it everywhere</span>
+</div>
+
+<div class="dash-grid">
+
+  <div class="chart-card full-width" id="card-chart1">
+    <h2>Water Access Trend (2000–2017)</h2>
+    <p class="subtitle">Population using safely managed drinking-water services (%) — National level</p>
+    <div class="controls">
+      <div>
+        <label>Region:</label>
+        <select id="c1-regionFilter"><option value="All">All Regions</option></select>
+      </div>
+      <div>
+        <label>Country:</label>
+        <select id="c1-countryFilter"><option value="All">All Countries</option></select>
+      </div>
+      <div class="btn-group">
+        <button id="c1-btnImproved" class="active">Most Improved</button>
+        <button id="c1-btnTop5">Top 5</button>
+        <button id="c1-btnBottom5">Bottom 5</button>
+        <button id="c1-btnReset">Reset</button>
+      </div>
+    </div>
+    <div class="chart-box">
+      <div class="no-data" id="c1-no-data">No data available for the selected filters.</div>
+      <div class="tooltip" id="c1-tooltip"></div>
+      <svg id="c1-chart"></svg>
+      <div class="legend" id="c1-legend"></div>
+    </div>
+  </div>
+
+  <div class="chart-card full-width" id="card-chart2">
+    <h2>Top / Bottom Countries by Water Access</h2>
+    <p class="subtitle">Population using safely managed drinking-water services (%) — National level</p>
+    <div class="controls">
+      <div>
+        <label>Year:</label>
+        <select id="c2-yearFilter"></select>
+      </div>
+      <div>
+        <label>Region:</label>
+        <select id="c2-regionFilter"><option value="All">All Regions</option></select>
+      </div>
+      <div class="btn-group">
+        <button id="c2-btnTop" class="active">Top 10</button>
+        <button id="c2-btnBottom">Bottom 10</button>
+      </div>
+      <div class="btn-group">
+        <button id="c2-btnNational" class="active">National</button>
+        <button id="c2-btnUrban">Urban</button>
+        <button id="c2-btnRural">Rural</button>
+      </div>
+    </div>
+    <div class="chart-box">
+      <div class="tooltip" id="c2-tooltip"></div>
+      <svg id="c2-chart"></svg>
+    </div>
+  </div>
+
+  <div class="chart-card full-width" id="card-chart3">
+    <h2>World Water Access Map (2000–2017)</h2>
+    <p class="subtitle">Countries colored by % of population using safely managed drinking water — click a country to explore</p>
+    <p style="font-size:11px;color:#8aa5bd;margin-bottom:14px;">Note: Grey countries indicate no reported data for this indicator in the JMP dataset (e.g. India, China, Australia, most of Africa).</p>
+    <div class="controls">
+      <div>
+        <label>Year:</label>
+        <input type="range" id="c3-yearSlider" min="2000" max="2017" value="2017" step="1" />
+        <span id="c3-year-label" style="font-weight:700;color:#1a4a7a;font-size:13px;">2017</span>
+      </div>
+      <div>
+        <label>Region:</label>
+        <select id="c3-regionFilter"><option value="All">All Regions</option></select>
+      </div>
+      <button id="c3-resetZoom">Reset Zoom</button>
+      <button id="c3-resetFilter">Reset Filters</button>
+    </div>
+    <div class="chart-box" id="c3-map-container">
+      <div class="tooltip" id="c3-tooltip"></div>
+      <div id="c3-loading-msg" class="loading-msg">Loading map data...</div>
+      <svg id="c3-map" style="display:none;"></svg>
+      <div id="c3-legend" style="margin-top:14px; display:flex; align-items:center; gap:10px; font-size:12px; color:#5a7a99; flex-wrap:wrap;">
+        <span>0%</span>
+        <canvas id="c3-legend-gradient" width="180" height="12"></canvas>
+        <span>100%</span>
+        <div style="display:flex; align-items:center; gap:6px; margin-left:14px;">
+          <div style="width:16px; height:12px; background:#d0d0d0; border-radius:3px;"></div>
+          <span>No data</span>
+        </div>
+      </div>
+      <div id="c3-selected-banner" class="selected-banner"></div>
+    </div>
+  </div>
+
+  <div class="chart-card full-width" id="card-chart4">
+    <h2>GDP per Capita vs Water Access</h2>
+    <p class="subtitle">Each dot represents one country — use the year filter to explore different years</p>
+    <div class="controls">
+      <div>
+        <label>Year:</label>
+        <select id="c4-yearFilter"></select>
+      </div>
+      <div>
+        <label>Region:</label>
+        <select id="c4-regionFilter"><option value="All">All Regions</option></select>
+      </div>
+      <button id="c4-resetZoom">Reset Zoom</button>
+      <button id="c4-resetFilter">Reset Filters</button>
+    </div>
+    <div class="chart-box" id="c4-chart-container">
+      <div class="tooltip" id="c4-tooltip"></div>
+      <div id="c4-loading-msg" class="loading-msg">Loading chart data...</div>
+      <svg id="c4-scatter" style="display:none;"></svg>
+    </div>
+  </div>
+
+  <div class="chart-card full-width" id="card-chart5">
+    <h2>Sanitation Access Heatmap (2000–2017)</h2>
+    <p class="subtitle">Population using basic sanitation services (%) — by country and year</p>
+    <div class="controls">
+      <div class="btn-group">
+        <button id="c5-btnTop20">Top 20</button>
+        <button id="c5-btnBottom20">Bottom 20</button>
+        <button id="c5-btnAll">All Countries</button>
+      </div>
+      <div>
+        <label>Search:</label>
+        <input type="text" id="c5-searchBox" placeholder="Type a country name..." />
+      </div>
+      <button id="c5-btnReset">Reset</button>
+    </div>
+    <div class="chart-box" id="c5-chart-container">
+      <div class="no-data" id="c5-no-data">No data available for the selected filters.</div>
+      <div class="tooltip" id="c5-tooltip"></div>
+      <div id="c5-scroll-wrap" style="overflow-x:auto; overflow-y:hidden;">
+        <svg id="c5-chart"></svg>
+      </div>
+      <div id="c5-legend" style="display:flex; align-items:center; gap:10px; margin-top:16px; font-size:12px; color:#5a7a99;"></div>
+      <p style="font-size:11px;color:#8aa6c0;font-style:italic;margin-top:6px;">Scroll horizontally to see all years · click a row to highlight that country across all charts</p>
+    </div>
+  </div>
+
+  <div class="chart-card full-width" id="card-chart6">
+    <h2>Water & Sanitation Access Over Time (2000–2017)</h2>
+    <p class="subtitle">Bubble size = population · color = WHO region · animated by year</p>
+    <div class="controls">
+      <button id="c6-playBtn" style="min-width:76px;">▶ Play</button>
+      <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:220px;">
+        <input type="range" id="c6-yearSlider" min="2000" max="2017" step="1" value="2000" style="flex:1; accent-color:#1a4a7a;" />
+        <span id="c6-yearLabel" style="font-size:14px; font-weight:700; color:#1a4a7a; min-width:40px;">2000</span>
+      </div>
+      <div>
+        <label>Region:</label>
+        <select id="c6-regionFilter"><option value="All">All Regions</option></select>
+      </div>
+      <button id="c6-btnReset">Reset</button>
+    </div>
+    <div class="chart-box" id="c6-chart-container">
+      <div id="c6-selected-banner" class="selected-banner"></div>
+      <div class="tooltip" id="c6-tooltip"></div>
+      <svg id="c6-chart"></svg>
+      <div class="legend" id="c6-legend"></div>
+    </div>
+  </div>
+
+</div>
+
+<footer>H2O Insight Dashboard · CDS6324 Data Visualization · Group G12 · TT5L</footer>
+
+<script>
+window.dashboardCharts = {};
+
+function initChart1() {
+  const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+  const width = 1080 - margin.left - margin.right;
+  const height = 380 - margin.top - margin.bottom;
+
+  const svg = d3.select("#c1-chart")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+    .append("g")
+    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+  const xAxisG = svg.append("g").attr("class", "axis x-axis").attr("transform", `translate(0,${height})`);
+  const yAxisG = svg.append("g").attr("class", "axis y-axis");
+  const gridG = svg.append("g").attr("class", "grid");
+  const linesG = svg.append("g").attr("class", "lines");
+
+  svg.append("text")
+    .attr("x", width / 2).attr("y", height + 42)
+    .attr("text-anchor", "middle")
+    .attr("font-size", "12px").attr("fill", "#5a7a99")
+    .text("Year");
+
+  svg.append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("x", -height / 2).attr("y", -48)
+    .attr("text-anchor", "middle")
+    .attr("font-size", "12px").attr("fill", "#5a7a99")
+    .text("Population with Access (%)");
+
+  const tooltip = document.getElementById("c1-tooltip");
+  const container = document.getElementById("card-chart1").querySelector(".chart-box");
+
+  const palette = [
+    "#1a6faf","#e07b39","#2ca02c","#d62728","#9467bd",
+    "#8c564b","#17becf","#bcbd22","#e377c2","#7f7f7f"
+  ];
+  const colorScale = d3.scaleOrdinal(palette);
+
+  let allData = [];
+  let activeMode = "improved";
+
+  d3.csv("chart1_data.csv").then(raw => {
+    raw.forEach(d => {
+      d.Year = +d.Year;
+      d.water_access = +d.water_access;
+    });
+    allData = raw;
+
+    const regions = ["All", ...new Set(raw.map(d => d.region).filter(Boolean).sort())];
+    d3.select("#c1-regionFilter").selectAll("option")
+      .data(regions).enter().append("option")
+      .text(d => d).attr("value", d => d);
+
+    populateCountries("All");
+    document.getElementById("c1-btnImproved").classList.add("active");
+    renderChart();
+
+    d3.select("#c1-regionFilter").on("change", () => {
+      populateCountries(d3.select("#c1-regionFilter").node().value);
+      activeMode = null;
+      clearActiveButtons();
+      renderChart();
+    });
+
+    d3.select("#c1-countryFilter").on("change", () => {
+      activeMode = null;
+      clearActiveButtons();
+      renderChart();
+    });
+
+    d3.select("#c1-btnImproved").on("click", () => {
+      activeMode = "improved";
+      setActiveButton("c1-btnImproved");
+      d3.select("#c1-countryFilter").node().value = "All";
+      renderChart();
+    });
+
+    d3.select("#c1-btnTop5").on("click", () => {
+      activeMode = "top5";
+      setActiveButton("c1-btnTop5");
+      d3.select("#c1-countryFilter").node().value = "All";
+      renderChart();
+    });
+
+    d3.select("#c1-btnBottom5").on("click", () => {
+      activeMode = "bottom5";
+      setActiveButton("c1-btnBottom5");
+      d3.select("#c1-countryFilter").node().value = "All";
+      renderChart();
+    });
+
+    d3.select("#c1-btnReset").on("click", () => {
+      activeMode = null;
+      clearActiveButtons();
+      d3.select("#c1-regionFilter").node().value = "All";
+      d3.select("#c1-countryFilter").node().value = "All";
+      populateCountries("All");
+      renderChart();
+    });
+  });
+
+  function populateCountries(region) {
+    const filtered = region === "All" ? allData : allData.filter(d => d.region === region);
+    const countries = ["All", ...new Set(filtered.map(d => d.Country).sort())];
+    const sel = d3.select("#c1-countryFilter");
+    sel.selectAll("option").remove();
+    sel.selectAll("option").data(countries).enter().append("option")
+      .text(d => d).attr("value", d => d);
+  }
+
+  function getFilteredData() {
+    const region = d3.select("#c1-regionFilter").node().value;
+    const country = d3.select("#c1-countryFilter").node().value;
+    let data = allData;
+    if (region !== "All") data = data.filter(d => d.region === region);
+    if (country !== "All") data = data.filter(d => d.Country === country);
+    return data;
+  }
+
+  function renderChart() {
+    linesG.selectAll("*").remove();
+    d3.select("#c1-legend").html("");
+
+    let data = getFilteredData();
+    let grouped = d3.group(data, d => d.Country);
+
+    if (activeMode === "top5" || activeMode === "bottom5" || activeMode === "improved") {
+      const byCountry = d3.group(data, d => d.Country);
+
+      if (activeMode === "improved") {
+        const improvements = [];
+        byCountry.forEach((values, country) => {
+          const v2000 = values.find(d => d.Year === 2000);
+          const v2017 = values.find(d => d.Year === 2017);
+          if (v2000 && v2017 && !isNaN(v2000.water_access) && !isNaN(v2017.water_access)) {
+            improvements.push({ country, gain: v2017.water_access - v2000.water_access });
+          }
+        });
+        improvements.sort((a, b) => b.gain - a.gain);
+        const selected = improvements.slice(0, 5).map(d => d.country);
+        grouped = new Map([...grouped].filter(([k]) => selected.includes(k)));
+      } else {
+        const latest = d3.rollup(data, v => d3.mean(v, d => d.water_access), d => d.Country);
+        const sorted = [...latest.entries()].sort((a, b) => b[1] - a[1]);
+        const selected = activeMode === "top5"
+          ? sorted.slice(0, 5).map(d => d[0])
+          : sorted.slice(-5).map(d => d[0]);
+        grouped = new Map([...grouped].filter(([k]) => selected.includes(k)));
+      }
+    }
+
+    if (activeMode === null && d3.select("#c1-countryFilter").node().value === "All" && grouped.size > 10) {
+      const byCountry = d3.group(getFilteredData(), d => d.Country);
+      const improvements = [];
+      byCountry.forEach((values, country) => {
+        const v2000 = values.find(d => d.Year === 2000);
+        const v2017 = values.find(d => d.Year === 2017);
+        if (v2000 && v2017) improvements.push({ country, gain: v2017.water_access - v2000.water_access });
+      });
+      improvements.sort((a, b) => b.gain - a.gain);
+      const top5 = improvements.slice(0, 5).map(d => d.country);
+      grouped = new Map([...grouped].filter(([k]) => top5.includes(k)));
+    }
+
+    if (grouped.size === 0) {
+      document.getElementById("c1-no-data").style.display = "block";
+      return;
+    }
+    document.getElementById("c1-no-data").style.display = "none";
+
+    const xScale = d3.scaleLinear().domain([2000, 2017]).range([0, width]);
+    const yScale = d3.scaleLinear().domain([0, 100]).range([height, 0]);
+
+    gridG.selectAll("*").remove();
+    gridG.call(d3.axisLeft(yScale).tickSize(-width).tickFormat("").ticks(5));
+
+    xAxisG.call(d3.axisBottom(xScale).tickFormat(d3.format("d")).ticks(9));
+    yAxisG.call(d3.axisLeft(yScale).ticks(5).tickFormat(d => d + "%"));
+
+    const line = d3.line()
+      .x(d => xScale(d.Year))
+      .y(d => yScale(d.water_access))
+      .curve(d3.curveMonotoneX)
+      .defined(d => !isNaN(d.water_access));
+
+    grouped.forEach((values, country) => {
+      const sorted = values.sort((a, b) => a.Year - b.Year);
+      const color = colorScale(country);
+
+      linesG.append("path")
+        .datum(sorted)
+        .attr("class", "line")
+        .attr("stroke", color)
+        .attr("fill", "none")
+        .attr("stroke-width", 2.2)
+        .attr("d", line)
+        .on("mousemove", function(event) {
+          showTooltip(event, country, null, null, color);
+        })
+        .on("mouseleave", hideTooltip);
+
+      linesG.selectAll(null)
+        .data(sorted)
+        .enter().append("circle")
+        .attr("class", "dot")
+        .attr("cx", d => xScale(d.Year))
+        .attr("cy", d => yScale(d.water_access))
+        .attr("r", 3.5)
+        .attr("fill", color)
+        .attr("stroke", "white")
+        .attr("stroke-width", 1.5)
+        .style("cursor", "pointer")
+        .on("mousemove", function(event, d) {
+          showTooltip(event, country, d.Year, d.water_access, color);
+        })
+        .on("mouseleave", hideTooltip);
+
+      const item = d3.select("#c1-legend").append("div").attr("class", "legend-item");
+      item.append("div").attr("class", "legend-color line").style("background", color);
+      item.append("span").text(country);
+    });
+  }
+
+  function showTooltip(event, country, year, value, color) {
+    const rect = container.getBoundingClientRect();
+    const x = event.clientX - rect.left + 12;
+    const y = event.clientY - rect.top - 10;
+    tooltip.style.opacity = "1";
+    tooltip.style.left = x + "px";
+    tooltip.style.top = y + "px";
+    tooltip.innerHTML = year
+      ? `<strong>${country}</strong><br>Year: ${year}<br>Access: ${value.toFixed(1)}%`
+      : `<strong>${country}</strong>`;
+  }
+
+  function hideTooltip() {
+    tooltip.style.opacity = "0";
+  }
+
+  function setActiveButton(id) {
+    document.querySelectorAll("#card-chart1 .btn-group button").forEach(b => b.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+  }
+  function clearActiveButtons() {
+    document.querySelectorAll("#card-chart1 .btn-group button").forEach(b => b.classList.remove("active"));
+  }
+
+  window.dashboardCharts.chart1 = {
+    setRegion: function(region) {
+      d3.select("#c1-regionFilter").node().value = region;
+      populateCountries(region);
+      activeMode = null;
+      clearActiveButtons();
+      renderChart();
+    }
+  };
+}
+
+initChart1();
+
+function initChart2() {
+  const margin = { top: 20, right: 80, bottom: 30, left: 150 };
+  const width = 1080 - margin.left - margin.right;
+  const height = 400 - margin.top - margin.bottom;
+
+  const svg = d3.select("#c2-chart")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+    .append("g")
+    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+  const xAxisG = svg.append("g").attr("class", "axis x-axis").attr("transform", `translate(0,${height})`);
+  const yAxisG = svg.append("g").attr("class", "axis y-axis");
+  const gridG = svg.append("g").attr("class", "grid");
+  const barsG = svg.append("g").attr("class", "bars");
+
+  const yearWatermark = svg.append("text")
+    .attr("font-size", "48px").attr("font-weight", "800").attr("fill", "#e8f4fd")
+    .attr("text-anchor", "end")
+    .attr("x", width)
+    .attr("y", height - 10)
+    .text("");
+
+  svg.append("text")
+    .attr("x", width / 2).attr("y", height + 28)
+    .attr("text-anchor", "middle")
+    .attr("font-size", "12px").attr("fill", "#5a7a99")
+    .text("Population with Access (%)");
+
+  const tooltip = document.getElementById("c2-tooltip");
+  const container = document.getElementById("card-chart2").querySelector(".chart-box");
+
+  const regionColors = {
+    "Africa": "#e07b39", "Americas": "#2ca02c", "Eastern Mediterranean": "#9467bd",
+    "Europe": "#1a6faf", "South-East Asia": "#d62728", "Western Pacific": "#17becf", "Other": "#7f7f7f"
+  };
+
+  let allJMP = [];
+  let activeMode = "top";
+  let activeArea = "National";
+
+  Promise.all([
+    d3.csv("chart2_data.csv"),
+    d3.csv("Basic and safely managed drinking water services.csv")
+  ]).then(([national, full]) => {
+    full.forEach(d => { d.Year = +d.Year; d.Numeric = +d.Numeric; });
+    allJMP = full;
+
+    const years = [...new Set(national.map(d => +d.Year))].sort((a,b)=>b-a);
+    d3.select("#c2-yearFilter").selectAll("option")
+      .data(years).enter().append("option")
+      .text(d=>d).attr("value",d=>d);
+    d3.select("#c2-yearFilter").node().value = d3.max(years);
+
+    const regions = ["All", ...new Set(full.map(d=>d['WHO region']).filter(Boolean).sort())];
+    d3.select("#c2-regionFilter").selectAll("option")
+      .data(regions).enter().append("option")
+      .text(d=>d).attr("value",d=>d);
+
+    renderChart();
+
+    d3.select("#c2-yearFilter").on("change", renderChart);
+    d3.select("#c2-regionFilter").on("change", renderChart);
+
+    d3.select("#c2-btnTop").on("click", () => {
+      activeMode = "top"; setActive("c2-btnTop", ["c2-btnTop","c2-btnBottom"]); renderChart();
+    });
+    d3.select("#c2-btnBottom").on("click", () => {
+      activeMode = "bottom"; setActive("c2-btnBottom", ["c2-btnTop","c2-btnBottom"]); renderChart();
+    });
+    d3.select("#c2-btnNational").on("click", () => {
+      activeArea = "National"; setActive("c2-btnNational", ["c2-btnNational","c2-btnUrban","c2-btnRural"]); renderChart();
+    });
+    d3.select("#c2-btnUrban").on("click", () => {
+      activeArea = "Urban"; setActive("c2-btnUrban", ["c2-btnNational","c2-btnUrban","c2-btnRural"]); renderChart();
+    });
+    d3.select("#c2-btnRural").on("click", () => {
+      activeArea = "Rural"; setActive("c2-btnRural", ["c2-btnNational","c2-btnUrban","c2-btnRural"]); renderChart();
+    });
+  });
+
+  function renderChart() {
+    barsG.selectAll("*").remove();
+
+    const year = +d3.select("#c2-yearFilter").node().value;
+    const region = d3.select("#c2-regionFilter").node().value;
+
+    let areaFilter = activeArea === "National" ? "Total" : activeArea;
+    let indicator = "Population using safely managed drinking-water services (%)";
+
+    let data = allJMP.filter(d =>
+      d.Year === year &&
+      d['Residence Area Type'] === areaFilter &&
+      d['Indicator'] === indicator &&
+      !isNaN(d.Numeric)
+    );
+
+    if (region !== "All") data = data.filter(d => d['WHO region'] === region);
+
+    data.sort((a, b) => b.Numeric - a.Numeric);
+    const slice = activeMode === "top" ? data.slice(0, 10) : data.slice(-10).reverse();
+
+    if (slice.length === 0) return;
+
+    const xScale = d3.scaleLinear().domain([0, 100]).range([0, width]);
+    const yScale = d3.scaleBand().domain(slice.map(d => d.Country)).range([0, height]).padding(0.25);
+
+    gridG.selectAll("*").remove();
+    gridG.call(d3.axisBottom(xScale).tickSize(height).tickFormat("").ticks(5)).attr("transform","translate(0,0)");
+
+    xAxisG.transition().duration(400).call(d3.axisBottom(xScale).ticks(5).tickFormat(d => d + "%"));
+    yAxisG.transition().duration(400).call(d3.axisLeft(yScale));
+
+    yearWatermark.text(year);
+
+    const bars = barsG.selectAll(".bar").data(slice, d => d.Country);
+
+    bars.enter().append("rect")
+      .attr("class", "bar")
+      .attr("x", 0)
+      .attr("y", d => yScale(d.Country))
+      .attr("height", yScale.bandwidth())
+      .attr("width", 0)
+      .attr("rx", 4)
+      .style("cursor", "pointer")
+      .attr("fill", d => regionColors[d['WHO region']] || regionColors["Other"])
+      .on("mousemove", function(event, d) {
+        const rect = container.getBoundingClientRect();
+        tooltip.style.opacity = "1";
+        tooltip.style.left = (event.clientX - rect.left + 12) + "px";
+        tooltip.style.top = (event.clientY - rect.top - 10) + "px";
+        tooltip.innerHTML = `<strong>${d.Country}</strong><br>Region: ${d['WHO region']}<br>Year: ${d.Year}<br>Access: ${(+d.Numeric).toFixed(1)}%`;
+      })
+      .on("mouseleave", () => tooltip.style.opacity = "0")
+      .transition().duration(500)
+      .attr("width", d => xScale(+d.Numeric));
+
+    barsG.selectAll(".value-label").data(slice).enter()
+      .append("text")
+      .attr("font-size", "11px").attr("fill", "#1a4a7a").attr("font-weight", "600")
+      .attr("x", d => xScale(+d.Numeric) + 6)
+      .attr("y", d => yScale(d.Country) + yScale.bandwidth() / 2 + 4)
+      .text(d => (+d.Numeric).toFixed(1) + "%")
+      .attr("opacity", 0)
+      .transition().delay(400).duration(200)
+      .attr("opacity", 1);
+  }
+
+  function setActive(activeId, group) {
+    group.forEach(id => document.getElementById(id).classList.remove("active"));
+    document.getElementById(activeId).classList.add("active");
+  }
+
+  window.dashboardCharts.chart2 = {
+    setRegion: function(region) {
+      d3.select("#c2-regionFilter").node().value = region;
+      renderChart();
+    }
+  };
+
+  return { rerender: renderChart };
+}
+
+const chart2Api = initChart2();
+
+function initChart3() {
+  const width = 1080;
+  const height = 520;
+
+  const svg = d3.select("#c3-map").attr("width", width).attr("height", height);
+  const g = svg.append("g");
+
+  const zoom = d3.zoom()
+    .scaleExtent([1, 8])
+    .on("zoom", (event) => { g.attr("transform", event.transform); });
+
+  svg.call(zoom);
+
+  document.getElementById("c3-resetZoom").addEventListener("click", () => {
+    svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+    document.getElementById("c3-selected-banner").style.display = "none";
+  });
+
+  const projection = d3.geoNaturalEarth1().scale(178).translate([width / 2, height / 2]);
+  const path = d3.geoPath().projection(projection);
+
+  const colorScale = d3.scaleSequential()
+    .domain([0, 100])
+    .interpolator(d3.interpolateRgbBasis(["#f0f7ff", "#7ec8e3", "#1a6faf", "#0d2f52"]));
+
+  const noDataColor = "#d0d0d0";
+
+  const nameMap = {
+    "USA": "United States of America",
+    "England": "United Kingdom of Great Britain and Northern Ireland",
+    "South Korea": "Republic of Korea",
+    "North Korea": "Democratic People's Republic of Korea",
+    "Laos": "Lao People's Democratic Republic",
+    "Macedonia": "Republic of North Macedonia",
+    "Moldova": "Republic of Moldova",
+    "Russia": "Russian Federation",
+    "Iran": "Iran (Islamic Republic of)",
+    "Czech Republic": "Czechia",
+    "Republic of the Congo": "Congo"
+  };
+
+  const tooltip = document.getElementById("c3-tooltip");
+  const container = document.getElementById("c3-map-container");
+
+  let selectedCountry = null;
+  let latestDataMap = {};
+
+  window.sharedJmpData = window.sharedJmpData || d3.csv("jmp_clean.csv");
+
+  Promise.all([
+    d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"),
+    window.sharedJmpData
+  ]).then(([geoData, csvData]) => {
+    document.getElementById("c3-loading-msg").style.display = "none";
+    const mapEl = document.getElementById("c3-map");
+    mapEl.style.display = "block";
+    mapEl.style.opacity = "0";
+    mapEl.style.transition = "opacity 0.6s ease";
+    setTimeout(() => { mapEl.style.opacity = "1"; }, 50);
+
+    const waterData = csvData.filter(d =>
+      d["Indicator"] === "Population using safely managed drinking-water services (%)" &&
+      d["Residence Area Type"] === "Total"
+    );
+
+    const regions = ["All", ...new Set(waterData.map(d => d["WHO region"]).filter(Boolean).sort())];
+    const regionSel = document.getElementById("c3-regionFilter");
+    regions.forEach(r => {
+      const opt = document.createElement("option");
+      opt.value = r; opt.textContent = r;
+      regionSel.appendChild(opt);
+    });
+
+    drawLegend();
+
+    let currentYear = 2017;
+    let currentRegion = "All";
+
+    drawMap(geoData, waterData, currentYear, currentRegion);
+
+    document.getElementById("c3-yearSlider").addEventListener("input", function () {
+      currentYear = +this.value;
+      document.getElementById("c3-year-label").textContent = currentYear;
+      drawMap(geoData, waterData, currentYear, currentRegion);
+    });
+
+    document.getElementById("c3-regionFilter").addEventListener("change", function () {
+      currentRegion = this.value;
+      drawMap(geoData, waterData, currentYear, currentRegion);
+    });
+
+    document.getElementById("c3-resetFilter").addEventListener("click", function () {
+      currentYear = 2017;
+      currentRegion = "All";
+      document.getElementById("c3-yearSlider").value = 2017;
+      document.getElementById("c3-year-label").textContent = 2017;
+      regionSel.value = "All";
+      drawMap(geoData, waterData, currentYear, currentRegion);
+    });
+
+    window.addEventListener("countrySelected", (e) => {
+      highlightCountry(e.detail.csvCountry || e.detail.country);
+    });
+
+    window.dashboardCharts.chart3 = {
+      setRegion: function(region) {
+        currentRegion = region;
+        regionSel.value = region;
+        drawMap(geoData, waterData, currentYear, currentRegion);
+      }
+    };
+  });
+
+  function drawMap(geoData, waterData, year, region) {
+    const dataMap = {};
+    latestDataMap = dataMap;
+    waterData
+      .filter(d => +d["Year"] === year)
+      .filter(d => region === "All" || d["WHO region"] === region)
+      .forEach(d => {
+        dataMap[d["Country"]] = { value: +d["Numeric"], whoRegion: d["WHO region"] };
+      });
+
+    g.selectAll(".c3-country")
+      .data(geoData.features)
+      .join("path")
+      .attr("class", "c3-country")
+      .style("stroke", "#ffffff")
+      .style("stroke-width", "0.5px")
+      .style("cursor", "pointer")
+      .style("transition", "opacity 0.2s, fill 0.4s ease")
+      .attr("d", path)
+      .attr("fill", d => {
+        const geoName = d.properties.name;
+        const csvName = nameMap[geoName] || geoName;
+        const match = dataMap[csvName];
+        return match && !isNaN(match.value) ? colorScale(match.value) : noDataColor;
+      })
+      .on("mouseenter", function() { d3.select(this).style("opacity", 0.75).style("stroke-width", "1.5px"); })
+      .on("mouseleave", function(event, d) {
+        const geoName = d.properties.name;
+        const csvName = nameMap[geoName] || geoName;
+        const isSelected = csvName === selectedCountry;
+        d3.select(this)
+          .style("opacity", 1)
+          .style("stroke-width", isSelected ? "3px" : "0.5px")
+          .style("stroke", isSelected ? "#ffd700" : "#ffffff");
+        tooltip.style.opacity = "0";
+      })
+      .on("mousemove", function (event, d) {
+        const geoName = d.properties.name;
+        const csvName = nameMap[geoName] || geoName;
+        const match = dataMap[csvName];
+        const rect = container.getBoundingClientRect();
+
+        tooltip.style.opacity = "1";
+        tooltip.style.left = (event.clientX - rect.left + 14) + "px";
+        tooltip.style.top = (event.clientY - rect.top - 14) + "px";
+
+        tooltip.innerHTML = match
+          ? `<div style="font-size:13px; font-weight:700; color:#7ec8e3; margin-bottom:4px;">${geoName}</div>
+             <div style="display:flex; justify-content:space-between; gap:12px;"><span style="color:#a0c4e8;">Region</span><span>${match.whoRegion}</span></div>
+             <div style="display:flex; justify-content:space-between; gap:12px;"><span style="color:#a0c4e8;">Water Access</span><span style="font-weight:700;">${match.value.toFixed(1)}%</span></div>`
+          : `<div style="font-size:13px; font-weight:700; color:#7ec8e3;">${geoName}</div><div style="color:#a0c4e8;">No data available</div>`;
+      })
+      .on("click", function (event, d) {
+        const geoName = d.properties.name;
+        const csvName = nameMap[geoName] || geoName;
+        const match = dataMap[csvName];
+
+        selectedCountry = csvName;
+        d3.select(this).raise();
+
+        const banner = document.getElementById("c3-selected-banner");
+        banner.style.display = "block";
+        banner.innerHTML = match
+          ? `<strong>${geoName}</strong> — Water Access: <strong>${match.value.toFixed(1)}%</strong> | Region: ${match.whoRegion}`
+          : `<strong>${geoName}</strong> — No data available for this year`;
+
+        window.dispatchEvent(new CustomEvent("countrySelected", {
+          detail: { country: geoName, csvCountry: csvName }
+        }));
+      });
+  }
+
+function highlightCountry(csvName) {
+  const incomingNameMap = { "United States": "USA", "United Kingdom": "England" };
+  csvName = incomingNameMap[csvName] || csvName;
+  selectedCountry = csvName;
+
+    g.selectAll(".c3-country")
+      .style("stroke", "#ffffff")
+      .style("stroke-width", "0.5px");
+
+    const target = g.selectAll(".c3-country")
+    .filter(d => d.properties.name === csvName || (nameMap[d.properties.name] || d.properties.name) === csvName);
+
+    target
+      .style("stroke", "#ffd700")
+      .style("stroke-width", "3px")
+      .raise();
+
+    const matchedDatum = target.data()[0];
+    const geoName = matchedDatum ? matchedDatum.properties.name : csvName;
+    const match = latestDataMap[csvName];
+
+    const banner = document.getElementById("c3-selected-banner");
+    banner.style.display = "block";
+    banner.innerHTML = match
+      ? `<strong>${geoName}</strong> — Water Access: <strong>${match.value.toFixed(1)}%</strong> | Region: ${match.whoRegion}`
+      : `<strong>${geoName}</strong> — No data available for this year`;
+  }
+
+  function drawLegend() {
+    const canvas = document.getElementById("c3-legend-gradient");
+    const ctx = canvas.getContext("2d");
+    for (let i = 0; i < 180; i++) {
+      ctx.fillStyle = colorScale((i / 180) * 100);
+      ctx.fillRect(i, 0, 1, 12);
+    }
+  }
+}
+
+initChart3();
+
+function initChart4() {
+  const margin = { top: 20, right: 30, bottom: 50, left: 55 };
+  const width = 1080 - margin.left - margin.right;
+  const height = 460 - margin.top - margin.bottom;
+  const legendSpace = 70;
+
+  const svg = d3.select("#c4-scatter")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom + legendSpace);
+
+  svg.append("defs").append("clipPath")
+    .attr("id", "c4-clip")
+    .append("rect")
+    .attr("width", width)
+    .attr("height", height);
+
+  const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+  const dotsGroup = g.append("g").attr("clip-path", "url(#c4-clip)");
+
+  window.sharedJmpData = window.sharedJmpData || d3.csv("jmp_clean.csv");
+
+  Promise.all([
+    d3.csv("unified_clean.csv"),
+    window.sharedJmpData
+  ]).then(([gdpData, regionData]) => {
+    document.getElementById("c4-loading-msg").style.display = "none";
+    document.getElementById("c4-scatter").style.display = "block";
+
+    const regionLookup = {};
+    regionData.forEach(d => {
+      if (d["Country"] && d["WHO region"]) regionLookup[d["Country"]] = d["WHO region"];
+    });
+    regionLookup["Democratic Republic of Congo"] = regionLookup["Democratic Republic of the Congo"];
+
+    function getFilteredForYear(year) {
+      const rawFiltered = gdpData
+        .filter(d => +d["Year"] === year)
+        .filter(d => d["GDP per Capita"] !== "" && d["Basic Drinking Water Services"] !== "")
+        .map(d => ({
+          country: d["Country"],
+          gdp: +d["GDP per Capita"],
+          waterAccess: +d["Basic Drinking Water Services"],
+          region: regionLookup[d["Country"]] || "Unknown"
+        }));
+
+      const seen = new Set();
+      return rawFiltered.filter(d => {
+        if (seen.has(d.country)) return false;
+        seen.add(d.country);
+        return true;
+      });
+    }
+
+    let currentYear = 2017;
+    let filtered = getFilteredForYear(currentYear);
+
+    const availableYears = [...new Set(gdpData.map(d => +d["Year"]))].filter(y => !isNaN(y) && y >= 2000 && y <= 2017).sort((a, b) => a - b);
+    const yearSel = document.getElementById("c4-yearFilter");
+    availableYears.forEach(y => {
+      const opt = document.createElement("option");
+      opt.value = y;
+      opt.textContent = y;
+      yearSel.appendChild(opt);
+    });
+    yearSel.value = currentYear;
+
+    const globalMinGdp = d3.min(gdpData.filter(d => d["GDP per Capita"] !== "").map(d => +d["GDP per Capita"]));
+    const globalMaxGdp = d3.max(gdpData.filter(d => d["GDP per Capita"] !== "").map(d => +d["GDP per Capita"]));
+
+    const xScale = d3.scaleLog()
+      .domain([globalMinGdp, globalMaxGdp * 1.05])
+      .range([0, width]);
+
+    const yScale = d3.scaleLinear().domain([0, 100]).range([height, 0]);
+
+    const xAxisG = svg.append("g")
+      .attr("transform", `translate(${margin.left},${margin.top + height})`)
+      .call(d3.axisBottom(xScale).tickValues([100, 1000, 10000, 100000]).tickFormat(d => "$" + d3.format("~s")(d)));
+
+    const yAxisG = svg.append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`)
+      .call(d3.axisLeft(yScale).ticks(8).tickFormat(d => d + "%"));
+
+    svg.append("text")
+      .attr("x", margin.left + width / 2).attr("y", height + margin.top + 40)
+      .attr("text-anchor", "middle").style("font-size", "12px").style("fill", "#5a7a99")
+      .text("GDP per Capita (USD)");
+
+    svg.append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("x", -(margin.top + height / 2)).attr("y", 18)
+      .attr("text-anchor", "middle").style("font-size", "12px").style("fill", "#5a7a99")
+      .text("Water Access (%)");
+
+    const regions = [...new Set(filtered.map(d => d.region))].sort();
+    const regionSel = document.getElementById("c4-regionFilter");
+    regions.forEach(r => {
+      const opt = document.createElement("option");
+      opt.value = r; opt.textContent = r;
+      regionSel.appendChild(opt);
+    });
+
+    const colorScale = d3.scaleOrdinal()
+      .domain(regions)
+      .range(["#1a4a7a", "#1a6faf", "#7ec8e3", "#e07b39", "#9b59b6", "#27ae60", "#c0392b"]);
+
+    const legend = svg.append("g").attr("transform", `translate(${margin.left}, ${margin.top + height + 60})`);
+    regions.forEach((region, i) => {
+      const col = i % 4;
+      const row = Math.floor(i / 4);
+      const item = legend.append("g").attr("transform", `translate(${col * 220}, ${row * 20})`);
+      item.append("circle").attr("r", 5).attr("fill", colorScale(region));
+      item.append("text").attr("x", 10).attr("y", 4).style("font-size", "10.5px").style("fill", "#1a2e3b").text(region);
+    });
+
+    const tooltip = document.getElementById("c4-tooltip");
+    const container = document.getElementById("c4-chart-container");
+    let currentRegion = "All";
+
+    function drawDots(selectedRegion, xS, yS) {
+      const dataToShow = selectedRegion === "All" ? filtered : filtered.filter(d => d.region === selectedRegion);
+
+      dotsGroup.selectAll(".c4-dot")
+        .data(dataToShow, d => d.country)
+        .join(
+          enter => enter.append("circle")
+            .attr("class", "c4-dot")
+            .attr("cx", d => xS(d.gdp))
+            .attr("cy", d => yS(d.waterAccess))
+            .attr("r", 0)
+            .attr("fill", d => colorScale(d.region))
+            .attr("opacity", 0.75)
+            .attr("stroke", "#fff")
+            .attr("stroke-width", 0.5)
+            .style("cursor", "pointer")
+            .style("transition", "r 0.15s ease, opacity 0.15s ease")
+            .call(enter => enter.transition().delay((d, i) => i * 3).duration(400).attr("r", 5)),
+          update => update.attr("cx", d => xS(d.gdp)).attr("cy", d => yS(d.waterAccess)),
+          exit => exit.transition().duration(300).attr("r", 0).remove()
+        )
+        .on("mouseenter", function() { d3.select(this).attr("stroke-width", 2); })
+        .on("mousemove", function (event, d) {
+          const rect = container.getBoundingClientRect();
+          tooltip.style.opacity = "1";
+          tooltip.style.left = (event.clientX - rect.left + 14) + "px";
+          tooltip.style.top = (event.clientY - rect.top - 14) + "px";
+          tooltip.innerHTML = `
+            <div style="font-size:13px; font-weight:700; color:#7ec8e3; margin-bottom:4px;">${d.country}</div>
+            <div style="display:flex; justify-content:space-between; gap:12px;"><span style="color:#a0c4e8;">Region</span><span>${d.region}</span></div>
+            <div style="display:flex; justify-content:space-between; gap:12px;"><span style="color:#a0c4e8;">GDP</span><span style="font-weight:700;">$${d3.format(",")(Math.round(d.gdp))}</span></div>
+            <div style="display:flex; justify-content:space-between; gap:12px;"><span style="color:#a0c4e8;">Water Access</span><span style="font-weight:700;">${d.waterAccess.toFixed(1)}%</span></div>
+          `;
+        })
+        .on("mouseleave", function () { d3.select(this).attr("stroke-width", 0.5); tooltip.style.opacity = "0"; });
+    }
+
+    function redrawForCurrentYear() {
+      filtered = getFilteredForYear(currentYear);
+      drawDots(currentRegion, xScale, yScale);
+    }
+
+    drawDots("All", xScale, yScale);
+
+    yearSel.addEventListener("change", function () {
+      currentYear = +this.value;
+      redrawForCurrentYear();
+    });
+
+    regionSel.addEventListener("change", function () {
+      currentRegion = this.value;
+      drawDots(currentRegion, xScale, yScale);
+    });
+
+    window.addEventListener("countrySelected", (e) => {
+      const chart4NameMap = { "USA": "United States", "England": "United Kingdom", "South Korea": "South Korea", "Russia": "Russia" };
+      const selectedCountryName = chart4NameMap[e.detail.country] || e.detail.country;
+
+      dotsGroup.selectAll(".c4-dot")
+        .attr("stroke", d => d.country === selectedCountryName ? "#000000" : "#fff")
+        .attr("stroke-width", d => d.country === selectedCountryName ? 3 : 0.5)
+        .attr("r", d => d.country === selectedCountryName ? 9 : 5)
+        .attr("opacity", d => d.country === selectedCountryName ? 1 : 0.35);
+    });
+
+    const zoom = d3.zoom()
+      .scaleExtent([1, 8])
+      .extent([[0, 0], [width, height]])
+      .on("zoom", (event) => {
+        const xScaleZoomed = event.transform.rescaleX(xScale);
+        const yScaleZoomed = event.transform.rescaleY(yScale);
+        xAxisG.call(d3.axisBottom(xScaleZoomed).tickValues([100, 1000, 10000, 100000]).tickFormat(d => "$" + d3.format("~s")(d)));
+        yAxisG.call(d3.axisLeft(yScaleZoomed).ticks(8).tickFormat(d => d + "%"));
+        drawDots(currentRegion, xScaleZoomed, yScaleZoomed);
+      });
+
+    svg.call(zoom);
+
+    document.getElementById("c4-resetZoom").addEventListener("click", () => {
+      svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+    });
+
+    document.getElementById("c4-resetFilter").addEventListener("click", function () {
+      currentRegion = "All";
+      regionSel.value = "All";
+      currentYear = 2017;
+      yearSel.value = 2017;
+      redrawForCurrentYear();
+    });
+
+    window.dashboardCharts.chart4 = {
+      setRegion: function(region) {
+        currentRegion = region;
+        regionSel.value = region;
+        drawDots(currentRegion, xScale, yScale);
+      }
+    };
+  });
+}
+
+initChart4();
+
+function initChart5() {
+  const margin = { top: 30, right: 30, bottom: 20, left: 150 };
+  const cellWidth = 34;
+  const cellHeight = 20;
+  const yearsRange = d3.range(2000, 2018);
+  const plotWidth = cellWidth * yearsRange.length;
+
+  let allData = [];
+  let viewMode = "all";
+  let selectedCountry = null;
+  let searchTerm = "";
+
+  const tooltip = document.getElementById("c5-tooltip");
+  const container = document.getElementById("c5-chart-container");
+
+  const colorScale = d3.scaleSequential(d3.interpolateBlues).domain([0, 100]);
+  const svg = d3.select("#c5-chart");
+
+  const chart5NameMap = { "USA": "United States", "England": "United Kingdom", "South Korea": "South Korea", "Russia": "Russia" };
+
+  d3.csv("chart5_data.csv").then(raw => {
+    raw.forEach(d => { d.Year = +d.Year; d.sanitation_access = +d.sanitation_access; });
+    allData = raw;
+
+    setActiveButton("c5-btnAll");
+    renderChart();
+
+    document.getElementById("c5-btnTop20").addEventListener("click", () => {
+      viewMode = "top20"; searchTerm = ""; document.getElementById("c5-searchBox").value = "";
+      setActiveButton("c5-btnTop20"); renderChart();
+    });
+    document.getElementById("c5-btnBottom20").addEventListener("click", () => {
+      viewMode = "bottom20"; searchTerm = ""; document.getElementById("c5-searchBox").value = "";
+      setActiveButton("c5-btnBottom20"); renderChart();
+    });
+    document.getElementById("c5-btnAll").addEventListener("click", () => {
+      viewMode = "all"; searchTerm = ""; document.getElementById("c5-searchBox").value = "";
+      setActiveButton("c5-btnAll"); renderChart();
+    });
+    document.getElementById("c5-btnReset").addEventListener("click", () => {
+      viewMode = "all"; selectedCountry = null; searchTerm = "";
+      document.getElementById("c5-searchBox").value = "";
+      setActiveButton("c5-btnAll"); renderChart();
+    });
+    document.getElementById("c5-searchBox").addEventListener("input", (e) => {
+      searchTerm = e.target.value.trim().toLowerCase();
+      renderChart();
+    });
+
+    window.addEventListener("countrySelected", function(e) {
+      const country = chart5NameMap[e.detail.country] || e.detail.country;
+      const match = allData.find(d => d.Country === country);
+      if (match) {
+        selectedCountry = match.Country;
+        renderChart();
+      }
+    });
+  });
+
+  function getLatestValue(country) {
+    const rows = allData.filter(d => d.Country === country);
+    const latest = rows.reduce((a, b) => (b.Year > a.Year ? b : a), rows[0]);
+    return latest ? latest.sanitation_access : null;
+  }
+
+  function getCountryList() {
+    let countries = [...new Set(allData.map(d => d.Country))];
+    if (searchTerm) return countries.filter(c => c.toLowerCase().includes(searchTerm)).sort();
+
+    const ranked = countries
+      .map(c => ({ country: c, value: getLatestValue(c) }))
+      .filter(d => d.value !== null)
+      .sort((a, b) => b.value - a.value);
+
+    if (viewMode === "top20") return ranked.slice(0, 20).map(d => d.country);
+    if (viewMode === "bottom20") return ranked.slice(-20).reverse().map(d => d.country);
+    return ranked.map(d => d.country).sort();
+  }
+
+  function renderChart() {
+    svg.selectAll("*").remove();
+    d3.select("#c5-legend").html("");
+
+    const countries = getCountryList();
+    if (countries.length === 0) {
+      document.getElementById("c5-no-data").style.display = "block";
+      return;
+    }
+    document.getElementById("c5-no-data").style.display = "none";
+
+    const plotHeight = cellHeight * countries.length;
+    svg.attr("width", plotWidth + margin.left + margin.right)
+       .attr("height", plotHeight + margin.top + margin.bottom);
+
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const xScale = d3.scaleBand().domain(yearsRange).range([0, plotWidth]).padding(0.04);
+    const yScale = d3.scaleBand().domain(countries).range([0, plotHeight]).padding(0.08);
+
+    g.append("g").attr("class", "axis")
+      .call(d3.axisTop(xScale).tickFormat(d3.format("d")))
+      .selectAll("text").attr("transform", "rotate(-40)").attr("text-anchor", "start").attr("dx", "4px");
+
+    const dataByCountry = d3.group(allData, d => d.Country);
+
+    g.selectAll(".c5-row-label")
+      .data(countries)
+      .enter().append("text")
+        .attr("class", d => "c5-row-label" + (d === selectedCountry ? " selected" : ""))
+        .style("font-size", "11px").style("fill", d => d === selectedCountry ? "#1a4a7a" : "#1a2e3b")
+        .style("font-weight", d => d === selectedCountry ? "700" : "400")
+        .style("cursor", "pointer")
+        .attr("x", -8)
+        .attr("y", d => yScale(d) + yScale.bandwidth() / 2)
+        .attr("text-anchor", "end")
+        .attr("dy", "0.35em")
+        .text(d => d)
+        .on("click", function(event, country) {
+          selectedCountry = country;
+          renderChart();
+          window.dispatchEvent(new CustomEvent("countrySelected", { detail: { country: country, csvCountry: country } }));
+        });
+
+    countries.forEach(country => {
+      const values = dataByCountry.get(country) || [];
+      const byYear = new Map(values.map(d => [d.Year, d.sanitation_access]));
+
+      yearsRange.forEach(year => {
+        const value = byYear.get(year);
+
+        g.append("rect")
+          .attr("x", xScale(year))
+          .attr("y", yScale(country))
+          .attr("width", xScale.bandwidth())
+          .attr("height", yScale.bandwidth())
+          .attr("fill", value !== undefined ? colorScale(value) : "#eef3f8")
+          .style("stroke", country === selectedCountry ? "#1a4a7a" : "#ffffff")
+          .style("stroke-width", country === selectedCountry ? "2px" : "1px")
+          .style("cursor", "pointer")
+          .on("mouseenter", function() { d3.select(this).style("stroke-width", "2px"); })
+          .on("mouseleave", function() {
+            d3.select(this).style("stroke-width", country === selectedCountry ? "2px" : "1px");
+            tooltip.style.opacity = "0";
+          })
+          .on("mousemove", function(event) {
+            const rect = container.getBoundingClientRect();
+            tooltip.style.opacity = "1";
+            tooltip.style.left = (event.clientX - rect.left + 14) + "px";
+            tooltip.style.top = (event.clientY - rect.top - 10) + "px";
+            tooltip.innerHTML = value !== undefined
+              ? `<strong>${country}</strong><br>Year: ${year}<br>Sanitation Access: ${value.toFixed(1)}%`
+              : `<strong>${country}</strong><br>Year: ${year}<br>No data`;
+          })
+          .on("click", function() {
+            selectedCountry = country;
+            renderChart();
+            window.dispatchEvent(new CustomEvent("countrySelected", { detail: { country: country, csvCountry: country } }));
+          });
+      });
+    });
+
+    const legendWidth = 160, legendHeight = 10;
+    const legendSvg = d3.select("#c5-legend").append("svg").attr("width", legendWidth + 50).attr("height", 28);
+    const defs = legendSvg.append("defs");
+    const gradient = defs.append("linearGradient").attr("id", "c5-sanGradient").attr("x1", "0%").attr("x2", "100%");
+    d3.range(0, 1.01, 0.1).forEach(t => {
+      gradient.append("stop").attr("offset", `${t * 100}%`).attr("stop-color", colorScale(t * 100));
+    });
+    legendSvg.append("rect").attr("x", 0).attr("y", 4).attr("width", legendWidth).attr("height", legendHeight).attr("fill", "url(#c5-sanGradient)").attr("rx", 3);
+    legendSvg.append("text").attr("x", 0).attr("y", 26).attr("font-size", "11px").attr("fill", "#5a7a99").text("0%");
+    legendSvg.append("text").attr("x", legendWidth - 22).attr("y", 26).attr("font-size", "11px").attr("fill", "#5a7a99").text("100%");
+
+    d3.select("#c5-legend").append("span").text(`Showing ${countries.length} countries`);
+  }
+
+  function setActiveButton(id) {
+    document.querySelectorAll("#card-chart5 .btn-group button").forEach(b => b.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+  }
+}
+
+initChart5();
+
+function initChart6() {
+  const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+  const width = 1080 - margin.left - margin.right;
+  const height = 440 - margin.top - margin.bottom;
+
+  const svg = d3.select("#c6-chart")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+    .append("g")
+    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+  const xAxisG = svg.append("g").attr("class", "axis x-axis").attr("transform", `translate(0,${height})`);
+  const yAxisG = svg.append("g").attr("class", "axis y-axis");
+  const gridG = svg.append("g").attr("class", "grid");
+  const bubblesG = svg.append("g").attr("class", "bubbles");
+
+  svg.append("text")
+    .attr("x", width / 2).attr("y", height + 42)
+    .attr("text-anchor", "middle").attr("font-size", "12px").attr("fill", "#5a7a99")
+    .text("Water Access (%)");
+
+  svg.append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("x", -height / 2).attr("y", -48)
+    .attr("text-anchor", "middle").attr("font-size", "12px").attr("fill", "#5a7a99")
+    .text("Sanitation Access (%)");
+
+  const tooltip = document.getElementById("c6-tooltip");
+  const container = document.getElementById("c6-chart-container");
+
+  const regionColors = {
+    "Africa": "#e07b39", "Americas": "#2ca02c", "Eastern Mediterranean": "#d62728",
+    "Europe": "#1a6faf", "South-East Asia": "#9467bd", "Western Pacific": "#17becf", "Other": "#999999"
+  };
+
+  const xScale = d3.scaleLinear().domain([0, 100]).range([0, width]);
+  const yScale = d3.scaleLinear().domain([0, 100]).range([height, 0]);
+  const rScale = d3.scaleSqrt().domain([0, 1.4e9]).range([3, 48]);
+
+  let allData = [];
+  let regionLookup = {};
+  let currentYear = 2000;
+  let currentRegion = "All";
+  let selectedCountry = null;
+  let playing = false;
+  let timer = null;
+
+  Promise.all([
+    d3.csv("chart6_data.csv"),
+    d3.json("country_region_lookup.json")
+  ]).then(([raw, lookup]) => {
+    regionLookup = lookup;
+    raw.forEach(d => {
+      d.Year = +d.Year;
+      d.water_access = +d.water_access;
+      d.sanitation_access = +d.sanitation_access;
+      d.population = +d.population;
+      d.gdp_per_capita = +d.gdp_per_capita;
+      d.region = regionLookup[d.Country] || "Other";
+    });
+    allData = raw;
+
+    const regions = ["All", ...Object.keys(regionColors).filter(r => raw.some(d => d.region === r))];
+    d3.select("#c6-regionFilter").selectAll("option")
+      .data(regions).enter().append("option").text(d => d).attr("value", d => d);
+
+    gridG.call(d3.axisLeft(yScale).tickSize(-width).tickFormat("").ticks(5));
+    xAxisG.call(d3.axisBottom(xScale).ticks(5).tickFormat(d => d + "%"));
+    yAxisG.call(d3.axisLeft(yScale).ticks(5).tickFormat(d => d + "%"));
+
+    renderFrame(currentYear);
+    renderLegend();
+
+    d3.select("#c6-yearSlider").on("input", function() {
+      stopPlaying();
+      currentYear = +this.value;
+      document.getElementById("c6-yearLabel").textContent = currentYear;
+      renderFrame(currentYear);
+    });
+
+    d3.select("#c6-regionFilter").on("change", function() {
+      currentRegion = this.value;
+      renderFrame(currentYear);
+    });
+
+    d3.select("#c6-playBtn").on("click", () => { playing ? stopPlaying() : startPlaying(); });
+
+    d3.select("#c6-btnReset").on("click", () => {
+      stopPlaying();
+      currentYear = 2000; currentRegion = "All"; selectedCountry = null;
+      d3.select("#c6-yearSlider").node().value = 2000;
+      d3.select("#c6-regionFilter").node().value = "All";
+      document.getElementById("c6-yearLabel").textContent = 2000;
+      document.getElementById("c6-selected-banner").style.display = "none";
+      renderFrame(currentYear);
+    });
+
+    window.addEventListener("countrySelected", function(e) {
+      const chart6NameMap = { "USA": "United States", "England": "United Kingdom", "South Korea": "South Korea", "Russia": "Russia" };
+      const country = chart6NameMap[e.detail.country] || e.detail.country;
+      const match = allData.find(d => d.Country === country);
+      if (match) {
+        selectedCountry = match.Country;
+        showBanner(selectedCountry);
+        renderFrame(currentYear);
+      }
+    });
+
+    window.dashboardCharts.chart6 = {
+      setRegion: function(region) {
+        currentRegion = region;
+        d3.select("#c6-regionFilter").node().value = region;
+        renderFrame(currentYear);
+        renderLegend();
+      }
+    };
+  });
+
+  function startPlaying() {
+    playing = true;
+    document.getElementById("c6-playBtn").textContent = "⏸ Pause";
+    document.getElementById("c6-playBtn").classList.add("active");
+    timer = setInterval(() => {
+      currentYear = currentYear >= 2017 ? 2000 : currentYear + 1;
+      d3.select("#c6-yearSlider").node().value = currentYear;
+      document.getElementById("c6-yearLabel").textContent = currentYear;
+      renderFrame(currentYear);
+      if (currentYear === 2017) stopPlaying();
+    }, 900);
+  }
+
+  function stopPlaying() {
+    playing = false;
+    clearInterval(timer);
+    document.getElementById("c6-playBtn").textContent = "▶ Play";
+    document.getElementById("c6-playBtn").classList.remove("active");
+  }
+
+  function showBanner(country) {
+    const banner = document.getElementById("c6-selected-banner");
+    banner.style.display = "block";
+    banner.innerHTML = `Highlighting <strong>${country}</strong> — click its bubble again, or Reset, to clear.`;
+  }
+
+  function renderFrame(year) {
+    let frameData = allData.filter(d => d.Year === year);
+    if (currentRegion !== "All") frameData = frameData.filter(d => d.region === currentRegion);
+
+    const t = d3.transition().duration(playing ? 850 : 400).ease(d3.easeLinear);
+
+    const circles = bubblesG.selectAll("circle.c6-bubble").data(frameData, d => d.Country);
+
+    circles.exit().transition(t).attr("r", 0).remove();
+
+    const entered = circles.enter()
+      .append("circle")
+      .attr("class", "c6-bubble")
+      .attr("cx", d => xScale(d.water_access))
+      .attr("cy", d => yScale(d.sanitation_access))
+      .attr("r", 0)
+      .attr("fill", d => regionColors[d.region] || "#999")
+      .attr("fill-opacity", 0.75)
+      .style("cursor", "pointer")
+      .style("stroke", "white")
+      .style("stroke-width", "1px")
+      .style("transition", "stroke-width 0.15s, opacity 0.3s");
+
+    entered.merge(circles)
+      .style("stroke", d => d.Country === selectedCountry ? "#1a2e3b" : "white")
+      .style("stroke-width", d => d.Country === selectedCountry ? "2.5px" : "1px")
+      .style("opacity", d => selectedCountry && d.Country !== selectedCountry ? 0.18 : 1)
+      .on("mousemove", function(event, d) {
+        const rect = container.getBoundingClientRect();
+        tooltip.style.opacity = "1";
+        tooltip.style.left = (event.clientX - rect.left + 14) + "px";
+        tooltip.style.top = (event.clientY - rect.top - 10) + "px";
+        tooltip.innerHTML = `<strong>${d.Country}</strong><br>
+          Water Access: ${d.water_access.toFixed(1)}%<br>
+          Sanitation: ${d.sanitation_access.toFixed(1)}%<br>
+          Population: ${d3.format(",")(d.population)}<br>
+          GDP/capita: $${d3.format(",.0f")(d.gdp_per_capita)}`;
+      })
+      .on("mouseleave", () => { tooltip.style.opacity = "0"; })
+      .on("click", function(event, d) {
+        selectedCountry = selectedCountry === d.Country ? null : d.Country;
+        if (selectedCountry) {
+          showBanner(selectedCountry);
+          window.dispatchEvent(new CustomEvent("countrySelected", { detail: { country: d.Country, csvCountry: d.Country } }));
+        } else {
+          document.getElementById("c6-selected-banner").style.display = "none";
+        }
+        renderFrame(currentYear);
+      })
+      .transition(t)
+      .attr("cx", d => xScale(d.water_access))
+      .attr("cy", d => yScale(d.sanitation_access))
+      .attr("r", d => rScale(d.population));
+  }
+
+  function renderLegend() {
+    const legend = d3.select("#c6-legend");
+    legend.html("");
+    Object.entries(regionColors).forEach(([region, color]) => {
+      const item = legend.append("div").attr("class", "legend-item")
+        .on("click", () => {
+          currentRegion = currentRegion === region ? "All" : region;
+          d3.select("#c6-regionFilter").node().value = currentRegion;
+          renderFrame(currentYear);
+          renderLegend();
+        });
+      if (currentRegion !== "All" && currentRegion !== region) item.classed("muted", true);
+      item.append("div").attr("class", "legend-color").style("background", color);
+      item.append("span").text(region);
+    });
+  }
+}
+
+initChart6();
+
+const allRegionsList = ["All", "Africa", "Americas", "Eastern Mediterranean", "Europe", "South-East Asia", "Western Pacific"];
+d3.select("#globalRegion").selectAll("option")
+  .data(allRegionsList).enter().append("option")
+  .text(d => d).attr("value", d => d);
+
+document.getElementById("globalRegion").addEventListener("change", function() {
+  const region = this.value;
+  Object.values(window.dashboardCharts).forEach(chart => {
+    if (chart && chart.setRegion) chart.setRegion(region);
+  });
+});
+
+document.getElementById("globalReset").addEventListener("click", function() {
+  document.getElementById("globalRegion").value = "All";
+  Object.values(window.dashboardCharts).forEach(chart => {
+    if (chart && chart.setRegion) chart.setRegion("All");
+  });
+  document.getElementById("c3-resetZoom").click();
+  document.getElementById("c3-resetFilter").click();
+  document.getElementById("c4-resetZoom").click();
+  document.getElementById("c4-resetFilter").click();
+  document.getElementById("c5-btnReset").click();
+  document.getElementById("c6-btnReset").click();
+  document.getElementById("c1-btnReset").click();
+});
+</script>
+</body>
+</html>

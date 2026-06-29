@@ -185,14 +185,12 @@ const yAxisG = svg.append("g").attr("class", "axis y-axis");
 const gridG = svg.append("g").attr("class", "grid");
 const barsG = svg.append("g").attr("class", "bars");
 
-// Watermark year
 const yearWatermark = svg.append("text")
   .attr("class", "year-display")
   .attr("x", width)
   .attr("y", height - 10)
   .text("");
 
-// Axis label
 svg.append("text")
   .attr("x", width / 2).attr("y", height + 28)
   .attr("text-anchor", "middle")
@@ -202,7 +200,6 @@ svg.append("text")
 const tooltip = document.getElementById("tooltip");
 const container = document.getElementById("chart-container");
 
-// Color scale by region
 const regionColors = {
   "Africa": "#e07b39",
   "Americas": "#2ca02c",
@@ -213,33 +210,27 @@ const regionColors = {
   "Other": "#7f7f7f"
 };
 
-// State — need to load all JMP for urban/rural
 let allJMP = [];
 let activeMode = "top";
 let activeArea = "National";
 
-// Load both water datasets
 Promise.all([
-  d3.csv("chart2_data.csv"),  // National safely managed water
+  d3.csv("chart2_data.csv"),
   d3.csv("Basic and safely managed drinking water services.csv")
 ]).then(([national, full]) => {
-  // Use full JMP water file for urban/rural
   full.forEach(d => {
     d.Year = +d.Year;
     d.Numeric = +d.Numeric;
   });
   allJMP = full;
 
-  // Year filter from national data
   const years = [...new Set(national.map(d => +d.Year))].sort((a,b)=>b-a);
   d3.select("#yearFilter").selectAll("option")
     .data(years).enter().append("option")
     .text(d=>d).attr("value",d=>d);
 
-  // Default to latest year
   d3.select("#yearFilter").node().value = d3.max(years);
 
-  // Region filter
   const regions = ["All", ...new Set(full.map(d=>d['WHO region']).filter(Boolean).sort())];
   d3.select("#regionFilter").selectAll("option")
     .data(regions).enter().append("option")
@@ -247,7 +238,6 @@ Promise.all([
 
   renderChart();
 
-  // Events
   d3.select("#yearFilter").on("change", renderChart);
   d3.select("#regionFilter").on("change", renderChart);
 
@@ -284,7 +274,6 @@ function renderChart() {
   const year = +d3.select("#yearFilter").node().value;
   const region = d3.select("#regionFilter").node().value;
 
-  // Determine which indicator/area to use
   let areaFilter = activeArea === "National" ? "Total" : activeArea;
   let indicator = "Population using safely managed drinking-water services (%)";
 
@@ -297,32 +286,26 @@ function renderChart() {
 
   if (region !== "All") data = data.filter(d => d['WHO region'] === region);
 
-  // Sort and slice
   data.sort((a, b) => b.Numeric - a.Numeric);
   const slice = activeMode === "top" ? data.slice(0, 10) : data.slice(-10).reverse();
 
   if (slice.length === 0) return;
 
-  // Scales
   const xScale = d3.scaleLinear().domain([0, 100]).range([0, width]);
   const yScale = d3.scaleBand()
     .domain(slice.map(d => d.Country))
     .range([0, height])
     .padding(0.25);
 
-  // Grid
   gridG.selectAll("*").remove();
   gridG.call(d3.axisBottom(xScale).tickSize(height).tickFormat("").ticks(5))
     .attr("transform","translate(0,0)");
 
-  // Axes
   xAxisG.transition().duration(400).call(d3.axisBottom(xScale).ticks(5).tickFormat(d => d + "%"));
   yAxisG.transition().duration(400).call(d3.axisLeft(yScale));
 
-  // Watermark
   yearWatermark.text(year);
 
-  // Bars
   const bars = barsG.selectAll(".bar").data(slice, d => d.Country);
 
   bars.enter().append("rect")
@@ -344,7 +327,6 @@ function renderChart() {
     .transition().duration(500)
     .attr("width", d => xScale(+d.Numeric));
 
-  // Value labels
   barsG.selectAll(".value-label").data(slice).enter()
     .append("text")
     .attr("class", "value-label")

@@ -289,7 +289,7 @@ Promise.all([
     .data(regions).enter().append("option")
     .text(d => d).attr("value", d => d);
 
-  // Axes + grid (static domain 0-100, drawn once)
+
   gridG.call(d3.axisLeft(yScale).tickSize(-width).tickFormat("").ticks(5));
   xAxisG.call(d3.axisBottom(xScale).ticks(5).tickFormat(d => d + "%"));
   yAxisG.call(d3.axisLeft(yScale).ticks(5).tickFormat(d => d + "%"));
@@ -297,7 +297,7 @@ Promise.all([
   renderFrame(currentYear);
   renderLegend();
 
-  // Controls
+
   d3.select("#yearSlider").on("input", function() {
     stopPlaying();
     currentYear = +this.value;
@@ -326,7 +326,7 @@ Promise.all([
     renderFrame(currentYear);
   });
 
-  // Linked interaction: highlight when another chart selects a country
+ 
   window.addEventListener("countrySelected", (e) => {
     const country = e.detail.csvCountry || e.detail.country;
     const match = allData.find(d => d.Country === country);

@@ -118,9 +118,13 @@
     <div style="width:4px; height:22px; background:#1a4a7a; border-radius:2px;"></div>
     <h2 style="margin:0;">Chart 4 – GDP per Capita vs Water Access</h2>
   </div>
-  <p class="subtitle" style="margin-left:14px;">Each dot represents one country in one year (2017)</p>
+  <p class="subtitle" style="margin-left:14px;">Each dot represents one country — use the year filter to explore different years</p>
 
   <div class="controls">
+    <div>
+      <label>Year:</label>
+      <select id="yearFilter"></select>
+    </div>
     <div>
       <label>Region:</label>
       <select id="regionFilter">
@@ -147,7 +151,6 @@
       .attr("width", width + margin.left + margin.right)
       .attr("height", height + margin.top + margin.bottom + legendSpace);
 
-    // keeps dots from spilling outside the chart area when zoomed in
     svg.append("defs").append("clipPath")
       .attr("id", "clip")
       .append("rect")
@@ -167,45 +170,57 @@
       document.getElementById("loading-msg").style.display = "none";
       document.getElementById("scatter").style.display = "block";
 
-      // unified_clean.csv has GDP/water data but no region column, so we look it up from jmp_clean.csv
       const regionLookup = {};
       regionData.forEach(d => {
         if (d["Country"] && d["WHO region"]) {
           regionLookup[d["Country"]] = d["WHO region"];
         }
       });
-      // unified_clean.csv spells this one without "the"
       regionLookup["Democratic Republic of Congo"] = regionLookup["Democratic Republic of the Congo"];
 
-      const year = 2017;
-      const rawFiltered = gdpData
-        .filter(d => +d["Year"] === year)
-        .filter(d => d["GDP per Capita"] !== "" && d["Basic Drinking Water Services"] !== "")
-        .map(d => ({
-          country: d["Country"],
-          gdp: +d["GDP per Capita"],
-          waterAccess: +d["Basic Drinking Water Services"],
-          region: regionLookup[d["Country"]] || "Unknown"
-        }));
+      function getFilteredForYear(year) {
+        const rawFiltered = gdpData
+          .filter(d => +d["Year"] === year)
+          .filter(d => d["GDP per Capita"] !== "" && d["Basic Drinking Water Services"] !== "")
+          .map(d => ({
+            country: d["Country"],
+            gdp: +d["GDP per Capita"],
+            waterAccess: +d["Basic Drinking Water Services"],
+            region: regionLookup[d["Country"]] || "Unknown"
+          }));
 
-      // some countries had duplicate rows for the same year, keep just the first
-      const seen = new Set();
-      const filtered = rawFiltered.filter(d => {
-        if (seen.has(d.country)) return false;
-        seen.add(d.country);
-        return true;
+        const seen = new Set();
+        return rawFiltered.filter(d => {
+          if (seen.has(d.country)) return false;
+          seen.add(d.country);
+          return true;
+        });
+      }
+
+      let currentYear = 2017;
+      let filtered = getFilteredForYear(currentYear);
+
+      const availableYears = [...new Set(gdpData.map(d => +d["Year"]))].filter(y => !isNaN(y) && y >= 2000 && y <= 2017).sort((a, b) => a - b);
+      const yearSel = document.getElementById("yearFilter");
+      availableYears.forEach(y => {
+        const opt = document.createElement("option");
+        opt.value = y;
+        opt.textContent = y;
+        yearSel.appendChild(opt);
       });
+      yearSel.value = currentYear;
 
-      // log scale since GDP has a few extreme outliers that squash everything else on a linear scale
+      const globalMinGdp = d3.min(gdpData.filter(d => d["GDP per Capita"] !== "").map(d => +d["GDP per Capita"]));
+      const globalMaxGdp = d3.max(gdpData.filter(d => d["GDP per Capita"] !== "").map(d => +d["GDP per Capita"]));
+
       const xScale = d3.scaleLog()
-        .domain([d3.min(filtered, d => d.gdp), d3.max(filtered, d => d.gdp) * 1.05])
+        .domain([globalMinGdp, globalMaxGdp * 1.05])
         .range([0, width]);
 
       const yScale = d3.scaleLinear()
         .domain([0, 100])
         .range([height, 0]);
 
-      // axes live outside the zoomed group so we can redraw them with rescaled values on zoom
       const xAxisG = svg.append("g")
         .attr("transform", `translate(${margin.left},${margin.top + height})`)
         .call(d3.axisBottom(xScale)
@@ -273,7 +288,6 @@
       const container = document.getElementById("chart-container");
       let currentRegion = "All";
 
-      // takes the scales as params so the same function works for both filtering and zoom redraws
       function drawDots(selectedRegion, xS, yS) {
         const dataToShow = selectedRegion === "All"
           ? filtered
@@ -318,20 +332,23 @@
           });
       }
 
+      function redrawForCurrentYear() {
+        filtered = getFilteredForYear(currentYear);
+        drawDots(currentRegion, xScale, yScale);
+      }
+
       drawDots("All", xScale, yScale);
+
+      yearSel.addEventListener("change", function () {
+        currentYear = +this.value;
+        redrawForCurrentYear();
+      });
 
       regionSel.addEventListener("change", function () {
         currentRegion = this.value;
         drawDots(currentRegion, xScale, yScale);
       });
 
-      document.getElementById("resetFilter").addEventListener("click", function () {
-        currentRegion = "All";
-        regionSel.value = "All";
-        drawDots(currentRegion, xScale, yScale);
-      });
-
-      // listens for clicks from Chart 3's map to highlight the matching dot here
       window.addEventListener("countrySelected", (e) => {
         const chart4NameMap = {
           "USA": "United States",
@@ -342,13 +359,12 @@
         const selectedCountryName = chart4NameMap[e.detail.country] || e.detail.country;
 
         dotsGroup.selectAll(".dot")
-          .attr("stroke", d => d.country === selectedCountryName ? "#e07b39" : "#fff")
-          .attr("stroke-width", d => d.country === selectedCountryName ? 2.5 : 0.5)
-          .attr("r", d => d.country === selectedCountryName ? 8 : 5)
-          .attr("opacity", d => d.country === selectedCountryName ? 1 : 0.4);
+          .attr("stroke", d => d.country === selectedCountryName ? "#000000" : "#fff")
+          .attr("stroke-width", d => d.country === selectedCountryName ? 3 : 0.5)
+          .attr("r", d => d.country === selectedCountryName ? 9 : 5)
+          .attr("opacity", d => d.country === selectedCountryName ? 1 : 0.35);
       });
 
-      // zoom set up here, after scales/axes exist, since it needs to rescale them
       const zoom = d3.zoom()
         .scaleExtent([1, 8])
         .extent([[0, 0], [width, height]])
@@ -371,6 +387,14 @@
         svg.transition().duration(500).call(
           zoom.transform, d3.zoomIdentity
         );
+      });
+
+      document.getElementById("resetFilter").addEventListener("click", function () {
+        currentRegion = "All";
+        regionSel.value = "All";
+        currentYear = 2017;
+        yearSel.value = 2017;
+        redrawForCurrentYear();
       });
 
     });

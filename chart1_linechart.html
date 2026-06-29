@@ -205,13 +205,13 @@ const svg = d3.select("#chart")
   .append("g")
   .attr("transform", `translate(${margin.left},${margin.top})`);
 
-// Axes groups
+
 const xAxisG = svg.append("g").attr("class", "axis x-axis").attr("transform", `translate(0,${height})`);
 const yAxisG = svg.append("g").attr("class", "axis y-axis");
 const gridG = svg.append("g").attr("class", "grid");
 const linesG = svg.append("g").attr("class", "lines");
 
-// Axis labels
+
 svg.append("text")
   .attr("x", width / 2).attr("y", height + 42)
   .attr("text-anchor", "middle")
@@ -228,13 +228,13 @@ svg.append("text")
 const tooltip = document.getElementById("tooltip");
 const container = document.getElementById("chart-container");
 
-// Color palette — water blues + contrast
+
 const palette = [
   "#1a6faf","#e07b39","#2ca02c","#d62728","#9467bd",
   "#8c564b","#17becf","#bcbd22","#e377c2","#7f7f7f"
 ];
 
-// Persistent color scale — assigned once per country, never resets
+
 const colorScale = d3.scaleOrdinal(palette);
 
 let allData = [];
@@ -247,22 +247,22 @@ d3.csv("chart1_data.csv").then(raw => {
   });
   allData = raw;
 
-  // Populate region filter
+ 
   const regions = ["All", ...new Set(raw.map(d => d.region).filter(Boolean).sort())];
   d3.select("#regionFilter").selectAll("option")
     .data(regions).enter().append("option")
     .text(d => d).attr("value", d => d);
 
-  // Populate country filter
+
   populateCountries("All");
 
-  // Set Most Improved as active visually on load
+ 
   document.getElementById("btnImproved").classList.add("active");
 
-  // Initial render
+  
   renderChart();
 
-  // Events
+  
   d3.select("#regionFilter").on("change", () => {
     populateCountries(d3.select("#regionFilter").node().value);
     activeMode = null;
@@ -332,15 +332,15 @@ function renderChart() {
 
   let data = getFilteredData();
 
-  // Group by country
+ 
   let grouped = d3.group(data, d => d.Country);
 
-  // Apply top5/bottom5/improved mode
+  
   if (activeMode === "top5" || activeMode === "bottom5" || activeMode === "improved") {
     const byCountry = d3.group(data, d => d.Country);
 
     if (activeMode === "improved") {
-      // Most improved = biggest increase from 2000 to 2017
+      
       const improvements = [];
       byCountry.forEach((values, country) => {
         const v2000 = values.find(d => d.Year === 2000);
@@ -362,7 +362,7 @@ function renderChart() {
     }
   }
 
-  // If no filter applied and no mode, default to most improved
+  
   if (activeMode === null && d3.select("#countryFilter").node().value === "All" && grouped.size > 10) {
     const byCountry = d3.group(getFilteredData(), d => d.Country);
     const improvements = [];
@@ -382,7 +382,7 @@ function renderChart() {
   }
   document.getElementById("no-data").style.display = "none";
 
-  // Scales
+  
   const xScale = d3.scaleLinear()
     .domain([2000, 2017])
     .range([0, width]);
@@ -391,29 +391,29 @@ function renderChart() {
     .domain([0, 100])
     .range([height, 0]);
 
-  // Grid
+  
   gridG.selectAll("*").remove();
   gridG.call(
     d3.axisLeft(yScale).tickSize(-width).tickFormat("").ticks(5)
   );
 
-  // Axes
+  
   xAxisG.call(d3.axisBottom(xScale).tickFormat(d3.format("d")).ticks(9));
   yAxisG.call(d3.axisLeft(yScale).ticks(5).tickFormat(d => d + "%"));
 
-  // Line generator
+  
   const line = d3.line()
     .x(d => xScale(d.Year))
     .y(d => yScale(d.water_access))
     .curve(d3.curveMonotoneX)
     .defined(d => !isNaN(d.water_access));
 
-  // Draw lines
+  
   grouped.forEach((values, country) => {
     const sorted = values.sort((a, b) => a.Year - b.Year);
     const color = colorScale(country);
 
-    // Line
+    
     linesG.append("path")
       .datum(sorted)
       .attr("class", "line")
@@ -424,7 +424,7 @@ function renderChart() {
       })
       .on("mouseleave", hideTooltip);
 
-    // Dots
+    
     linesG.selectAll(`.dot-${country.replace(/\s/g,"_")}`)
       .data(sorted)
       .enter().append("circle")
@@ -440,7 +440,7 @@ function renderChart() {
       })
       .on("mouseleave", hideTooltip);
 
-    // Legend
+    
     const item = d3.select("#legend").append("div").attr("class", "legend-item");
     item.append("div").attr("class", "legend-color")
       .style("background", color);
